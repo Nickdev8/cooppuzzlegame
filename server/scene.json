@@ -1,0 +1,27 @@
+[
+  {
+    "id": "ball1",
+    "type": "circle",
+    "x": 300,
+    "y": 100,
+    "radius": 20,
+    "mass": 0.002,
+    "restitution": 0.9,
+    "friction": 0.05,
+    "image": "/images/ball.png",
+    "width": 40,
+    "height": 40
+  },
+  {
+    "id": "box1",
+    "type": "rectangle",
+    "x": 500,
+    "y": 150,
+    "width": 60,
+    "height": 60,
+    "mass": 0.005,
+    "restitution": 0.3,
+    "friction": 0.1,
+    "image": "/images/box.png"
+  }
+]
