@@ -8,7 +8,7 @@
     "mass": 0.002,
     "restitution": 0.9,
     "friction": 0.05,
-    "image": "/images/ball.png",
+    "image": "/src/images/ball.png",
     "width": 40,
     "height": 40
   },
@@ -22,6 +22,6 @@
     "mass": 0.005,
     "restitution": 0.3,
     "friction": 0.1,
-    "image": "/images/box.png"
+    "image": "/src/images/box.png"
   }
 ]

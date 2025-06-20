@@ -98,25 +98,31 @@ io.on('connection', socket => {
     updateCanvasSize();
   });
 
-  // drag & throw (first body only here, but can extend)
   let dragConstraint = null;
-  socket.on('startDrag', ({ x, y }) => {
+
+  socket.on('startDrag', ({ id, x, y }) => {
     if (dragConstraint) return;
+
+    const entry = bodies.find(o => o.renderHint.id === id);
+    if (!entry) return;
+
     dragConstraint = Constraint.create({
       pointA: { x, y },
-      bodyB: bodies[0].body,
+      bodyB: entry.body,
       pointB: { x: 0, y: 0 },
       stiffness: 0.1,
-      damping:   0.02
+      damping: 0.02
     });
     World.add(world, dragConstraint);
   });
+
   socket.on('drag', ({ x, y }) => {
     if (dragConstraint) {
       dragConstraint.pointA.x = x;
       dragConstraint.pointA.y = y;
     }
   });
+
   socket.on('endDrag', () => {
     if (dragConstraint) {
       World.remove(world, dragConstraint);
@@ -124,12 +130,10 @@ io.on('connection', socket => {
     }
   });
 
-  // mouse tracking
   socket.on('movemouse', pos => io.emit('mouseMoved', { id: socket.id, ...pos }));
   socket.on('mouseLeave', () => socket.broadcast.emit('mouseRemoved', { id: socket.id }));
 });
 
-// cleanup stale clients
 setInterval(() => {
   const now = Date.now();
   for (const [id, ts] of lastReportTime.entries()) {
