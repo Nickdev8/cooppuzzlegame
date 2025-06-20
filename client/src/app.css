@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+
+* {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+body{
+    background-color: rgb(112, 79, 79);
+}
+
+canvas{
+    background-color: white;
+}
