@@ -13,63 +13,64 @@ app.use(cors());
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 
-// ——— CONFIG ———
-const WALL_THICKNESS    = 10;
-const RESPAWN_MARGIN    = 50;
-const SCENE_FILE        = path.join(__dirname, 'scene.json');
-const REPORT_TIMEOUT    = 5000;  // ms before a client is considered gone
-const CLEANUP_INTERVAL  = 2000;  // ms between stale‐client sweeps
+// ─── CONFIG ─────────────────────────────────────────────────────────────────
+const WALL_THICKNESS   = 10;
+const RESPAWN_MARGIN   = 50;
+const SCENE_FILE       = path.join(__dirname, 'scene.json');
+const REPORT_TIMEOUT   = 5000;  // ms before a client is stale
+const CLEANUP_INTERVAL = 2000;  // ms between stale‐client sweeps
 
-// ——— LOAD SCENE DATA ———
+// ─── LOAD SCENE ─────────────────────────────────────────────────────────────
 const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
 
-// ——— PHYSICS SETUP ———
+// ─── PHYSICS SETUP ─────────────────────────────────────────────────────────
 const engine = Engine.create();
 const world  = engine.world;
 
 // static walls + floor
 let walls = { left: null, right: null, bottom: null };
 let canvasSize = { width: 800, height: 600 };
+
 function recreateWalls() {
   if (walls.left) World.remove(world, [walls.left, walls.right, walls.bottom]);
   const { width, height } = canvasSize;
-  const wallHeight = height * 20;
+  const h = height * 20;  // effectively infinite
 
-  walls.left   = Bodies.rectangle(-WALL_THICKNESS/2, height/2, WALL_THICKNESS, wallHeight, { isStatic: true });
-  walls.right  = Bodies.rectangle(width + WALL_THICKNESS/2, height/2, WALL_THICKNESS, wallHeight, { isStatic: true });
+  walls.left   = Bodies.rectangle(-WALL_THICKNESS/2, height/2, WALL_THICKNESS, h, { isStatic: true });
+  walls.right  = Bodies.rectangle(width + WALL_THICKNESS/2, height/2, WALL_THICKNESS, h, { isStatic: true });
   walls.bottom = Bodies.rectangle(width/2, height + WALL_THICKNESS/2, width + WALL_THICKNESS*2, WALL_THICKNESS, { isStatic: true });
 
   World.add(world, [walls.left, walls.right, walls.bottom]);
 }
 recreateWalls();
 
-// create dynamic bodies from JSON
-const bodies          = [];
-const DYNAMIC_BODIES  = [];
+// dynamic bodies
+const bodies = [], DYNAMIC_BODIES = [];
 
 for (const cfg of sceneData) {
-  let body;
-  const opts = {
-    mass:        cfg.mass ?? 1,
+  let b, opts = {
+    mass: cfg.mass  ?? 1,
     restitution: cfg.restitution ?? 0.2,
-    friction:    cfg.friction ?? 0.1
+    friction: cfg.friction ?? 0.1
   };
+
   if (cfg.type === 'circle') {
-    body = Bodies.circle(cfg.x, cfg.y, cfg.radius, opts);
+    b = Bodies.circle(cfg.x, cfg.y, cfg.radius, opts);
   } else if (cfg.type === 'rectangle') {
-    body = Bodies.rectangle(cfg.x, cfg.y, cfg.width, cfg.height, opts);
+    b = Bodies.rectangle(cfg.x, cfg.y, cfg.width, cfg.height, opts);
   } else {
     continue;
   }
-  body.label = cfg.id;
-  World.add(world, body);
-  bodies.push({ body, renderHint: cfg });
-  DYNAMIC_BODIES.push(body);
+
+  b.label = cfg.id;
+  World.add(world, b);
+  bodies.push({ body: b, renderHint: cfg });
+  DYNAMIC_BODIES.push(b);
 }
 
-// track clients
-const clientSizes    = new Map();
-const lastReportTime = new Map();
+// client tracking
+const clientSizes = new Map(), lastReport = new Map();
+
 function updateCanvasSize() {
   let minW = Infinity, minH = Infinity;
   for (const { width, height } of clientSizes.values()) {
@@ -77,102 +78,92 @@ function updateCanvasSize() {
     minH = Math.min(minH, height);
   }
   if (minW === Infinity) return;
+
   canvasSize = { width: minW, height: minH };
   io.emit('canvasSize', canvasSize);
   recreateWalls();
 }
 
-// socket.io
+// ─── SOCKET.IO ───────────────────────────────────────────────────────────────
 io.on('connection', socket => {
-  console.log('Client connected:', socket.id);
-
   socket.on('initSize', ({ width, height }) => {
     clientSizes.set(socket.id, { width, height });
-    lastReportTime.set(socket.id, Date.now());
+    lastReport.set(socket.id, Date.now());
     updateCanvasSize();
   });
+
   socket.on('disconnect', () => {
     clientSizes.delete(socket.id);
-    lastReportTime.delete(socket.id);
+    lastReport.delete(socket.id);
     socket.broadcast.emit('mouseRemoved', { id: socket.id });
     updateCanvasSize();
   });
 
-  let dragConstraint = null;
-
+  // drag & throw
+  let dragC = null;
   socket.on('startDrag', ({ id, x, y }) => {
-    if (dragConstraint) return;
-
+    if (dragC) return;
     const entry = bodies.find(o => o.renderHint.id === id);
     if (!entry) return;
-
-    dragConstraint = Constraint.create({
-      pointA: { x, y },
-      bodyB: entry.body,
-      pointB: { x: 0, y: 0 },
-      stiffness: 0.1,
-      damping: 0.02
-    });
-    World.add(world, dragConstraint);
+    dragC = Constraint.create({ pointA: { x, y }, bodyB: entry.body, pointB: { x: 0, y: 0 }, stiffness: 0.1, damping: 0.02 });
+    World.add(world, dragC);
   });
-
   socket.on('drag', ({ x, y }) => {
-    if (dragConstraint) {
-      dragConstraint.pointA.x = x;
-      dragConstraint.pointA.y = y;
+    if (dragC) {
+      dragC.pointA.x = x;
+      dragC.pointA.y = y;
     }
   });
-
   socket.on('endDrag', () => {
-    if (dragConstraint) {
-      World.remove(world, dragConstraint);
-      dragConstraint = null;
+    if (dragC) {
+      World.remove(world, dragC);
+      dragC = null;
     }
   });
 
+  // cursors
   socket.on('movemouse', pos => io.emit('mouseMoved', { id: socket.id, ...pos }));
   socket.on('mouseLeave', () => socket.broadcast.emit('mouseRemoved', { id: socket.id }));
 });
 
+// cleanup stale clients
 setInterval(() => {
   const now = Date.now();
-  for (const [id, ts] of lastReportTime.entries()) {
+  for (const [id, ts] of lastReport.entries()) {
     if (now - ts > REPORT_TIMEOUT) {
-      lastReportTime.delete(id);
+      lastReport.delete(id);
       clientSizes.delete(id);
       io.emit('mouseRemoved', { id });
       updateCanvasSize();
-      console.log(`Removed stale client ${id}`);
     }
   }
 }, CLEANUP_INTERVAL);
 
-// physics + state broadcast
+// physics loop + state
 setInterval(() => {
   Engine.update(engine, 1000/60);
 
-  // respawn if fallen
   const floorY = canvasSize.height + WALL_THICKNESS/2;
-  for (const body of DYNAMIC_BODIES) {
-    if (body.position.y > floorY + RESPAWN_MARGIN) {
-      Body.setPosition(body, { x: 300, y: 100 });
-      Body.setVelocity(body, { x: 0, y: 0 });
-      Body.setAngularVelocity(body, 0);
-      Body.setAngle(body, 0);
+  for (const b of DYNAMIC_BODIES) {
+    if (b.position.y > floorY + RESPAWN_MARGIN) {
+      Body.setPosition(b, { x: 300, y: 100 });
+      Body.setVelocity(b, { x: 0, y: 0 });
+      Body.setAngularVelocity(b, 0);
+      Body.setAngle(b, 0);
     }
   }
 
   io.emit('state',
     bodies.map(({ body, renderHint }) => ({
-      id:    body.label,
-      x:     body.position.x,
-      y:     body.position.y,
-      angle: body.angle,
-      image: renderHint.image,
-      width: renderHint.width,
-      height:renderHint.height
+      id:     body.label,
+      x:      body.position.x,
+      y:      body.position.y,
+      angle:  body.angle,
+      image:  renderHint.image,
+      width:  renderHint.width,
+      height: renderHint.height
     }))
   );
 }, 1000/60);
 
-server.listen(3000, () => console.log('Server listening on http://localhost:3000'));
+server.listen(3000, () => console.log('Server on http://localhost:3000'));
