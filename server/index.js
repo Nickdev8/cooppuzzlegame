@@ -11,36 +11,29 @@ app.use(cors());
 const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 
-// ——— CONFIG ———
-const WALL_THICKNESS     = 10;          // thickness of walls & floor
-const RESPAWN_MARGIN     = 50;          // extra px below floor to trigger respawn
+const WALL_THICKNESS     = 10;
+const RESPAWN_MARGIN     = 50;
 const INITIAL_BALL_POS   = { x: 300, y: 100 };
-const DYNAMIC_BODIES     = [];          // we'll push the ball here
+const DYNAMIC_BODIES     = [];
 
-// ——— PHYSICS SETUP ———
 const engine = Engine.create();
 const world  = engine.world;
 
-// Create the ball and register it for respawn checks
 const ball = Bodies.circle(INITIAL_BALL_POS.x, INITIAL_BALL_POS.y, 20);
 World.add(world, [ball]);
 DYNAMIC_BODIES.push(ball);
 
-// Container for walls/floor bodies
 let walls = { left: null, right: null, bottom: null };
 
-// Default canvas size (before any clients connect)
 let canvasSize = { width: 800, height: 600 };
 
-// Builds (or rebuilds) the side-walls and single floor collider
 function recreateWalls() {
-  // remove old bodies if present
   if (walls.left) {
     World.remove(world, [walls.left, walls.right, walls.bottom]);
   }
 
   const { width, height } = canvasSize;
-  const wallHeight = height * 20;  // “almost infinite”
+  const wallHeight = height * 20;
 
   walls.left  = Bodies.rectangle(-WALL_THICKNESS/2, height/2, WALL_THICKNESS, wallHeight, { isStatic: true });
   walls.right = Bodies.rectangle(width + WALL_THICKNESS/2, height/2, WALL_THICKNESS, wallHeight, { isStatic: true });
@@ -56,7 +49,6 @@ function recreateWalls() {
 }
 recreateWalls();
 
-// Track all clients’ viewport sizes to compute min canvas
 const clientSizes = new Map();
 function updateCanvasSize() {
   let minW = Infinity, minH = Infinity;
@@ -71,7 +63,6 @@ function updateCanvasSize() {
   recreateWalls();
 }
 
-// ——— Socket.io Handlers ———
 io.on('connection', socket => {
   console.log('Client connected:', socket.id);
 
@@ -86,7 +77,6 @@ io.on('connection', socket => {
     updateCanvasSize();
   });
 
-  // drag & throw (unchanged) …
   let dragConstraint = null;
   socket.on('startDrag', ({ x, y }) => {
     if (dragConstraint) return;
@@ -112,7 +102,6 @@ io.on('connection', socket => {
     }
   });
 
-  // mouse tracking (unchanged) …
   socket.on('movemouse', ({ x, y }) => {
     io.emit('mouseMoved', { id: socket.id, x, y });
   });
@@ -121,11 +110,9 @@ io.on('connection', socket => {
   });
 });
 
-// ——— Physics Loop + Respawn Logic ———
 setInterval(() => {
   Engine.update(engine, 1000 / 60);
 
-  // Respawn any body that falls below the floor + margin
   const floorY = canvasSize.height + WALL_THICKNESS/2;
   for (const body of DYNAMIC_BODIES) {
     if (body.position.y > floorY + RESPAWN_MARGIN) {
@@ -137,11 +124,9 @@ setInterval(() => {
     }
   }
 
-  // broadcast updated state
   io.emit('state', [
     { id: 'ball', x: ball.position.x, y: ball.position.y }
   ]);
 }, 1000 / 60);
 
-// ——— Start Server ———
 server.listen(3000, () => console.log('Server running on http://localhost:3000'));
