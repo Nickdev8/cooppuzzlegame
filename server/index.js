@@ -17,7 +17,6 @@ const io     = new Server(server, { cors: { origin: '*' } });
 const WALL_THICKNESS   = 10;
 const RESPAWN_MARGIN   = 50;
 const SCENE_FILE       = path.join(__dirname, 'scene.json');
-const REPORT_TIMEOUT   = 5000;  // ms before a client is stale
 const CLEANUP_INTERVAL = 2000;  // ms between stale‐client sweeps
 
 // ─── LOAD SCENE ─────────────────────────────────────────────────────────────
@@ -69,7 +68,7 @@ for (const cfg of sceneData) {
 }
 
 // client tracking
-const clientSizes = new Map(), lastReport = new Map();
+const clientSizes = new Map();
 
 function updateCanvasSize() {
   let minW = Infinity, minH = Infinity;
@@ -88,13 +87,11 @@ function updateCanvasSize() {
 io.on('connection', socket => {
   socket.on('initSize', ({ width, height }) => {
     clientSizes.set(socket.id, { width, height });
-    lastReport.set(socket.id, Date.now());
     updateCanvasSize();
   });
 
   socket.on('disconnect', () => {
     clientSizes.delete(socket.id);
-    lastReport.delete(socket.id);
     socket.broadcast.emit('mouseRemoved', { id: socket.id });
     updateCanvasSize();
   });
@@ -126,19 +123,6 @@ io.on('connection', socket => {
   socket.on('mouseLeave', () => socket.broadcast.emit('mouseRemoved', { id: socket.id }));
 });
 
-// cleanup stale clients
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, ts] of lastReport.entries()) {
-    if (now - ts > REPORT_TIMEOUT) {
-      lastReport.delete(id);
-      clientSizes.delete(id);
-      io.emit('mouseRemoved', { id });
-      updateCanvasSize();
-    }
-  }
-}, CLEANUP_INTERVAL);
-
 // physics loop + state
 setInterval(() => {
   Engine.update(engine, 1000/60);
@@ -166,4 +150,4 @@ setInterval(() => {
   );
 }, 1000/60);
 
-server.listen(3000, () => console.log('Server on http://localhost:3000'));
+server.listen(3080, () => console.log('Server on https://iotservice.nl:3080'));

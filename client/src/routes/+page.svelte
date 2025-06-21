@@ -1,4 +1,3 @@
-<!-- client/src/routes/+page.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import io, { Socket } from 'socket.io-client';
@@ -15,18 +14,21 @@
   let dragging = false;
   let dragId: string|null = null;
   const RADIUS = 20;
-  let reportInterval: number;
   let spriteCache: Record<string, HTMLImageElement> = {};
 
   function reportSize() {
-    socket.emit('initSize', { width: window.innerWidth, height: window.innerHeight });
+    const size = { width: window.innerWidth, height: window.innerHeight };
+    console.debug('[reportSize] Sending initSize', size);
+    socket.emit('initSize', size);
   }
 
   function handleWindowMousemove(e: MouseEvent) {
+    if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    if (x>=0 && y>=0 && x<=canvasWidth && y<=canvasHeight) {
+    console.debug('[handleWindowMousemove]', { x, y, dragging });
+    if (x >= 0 && y >= 0 && x <= canvasWidth && y <= canvasHeight) {
       socket.emit('movemouse', { x, y });
     } else {
       socket.emit('mouseLeave');
@@ -35,37 +37,54 @@
       socket.emit('drag', { x, y });
     }
   }
-  function handleWindowMouseleave() { socket.emit('mouseLeave'); }
+
+  function handleWindowMouseleave() {
+    console.debug('[handleWindowMouseleave]');
+    socket.emit('mouseLeave');
+  }
+
   function handleWindowMouseup() {
+    console.debug('[handleWindowMouseup]', { dragging, dragId });
     if (dragging) {
       socket.emit('endDrag');
-      dragging = false; dragId = null;
+      dragging = false;
+      dragId = null;
     }
   }
 
   function handleCanvasMousedown(e: MouseEvent) {
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    console.debug('[handleCanvasMousedown]', { mx, my });
     let hit = false;
     for (const id in objects) {
       const o = objects[id];
-      const dx = mx - o.x, dy = my - o.y;
-      if (dx*dx + dy*dy <= RADIUS*RADIUS) {
-        hit = true; dragging = true; dragId = id;
+      const dx = mx - o.x;
+      const dy = my - o.y;
+      if (dx * dx + dy * dy <= RADIUS * RADIUS) {
+        hit = true;
+        dragging = true;
+        dragId = id;
+        console.debug('[startDrag]', { id, mx, my });
         socket.emit('startDrag', { id, x: mx, y: my });
         break;
       }
     }
     if (!hit && dragging) {
+      console.debug('[endDrag] No hit, ending drag', { dragId });
       socket.emit('endDrag');
-      dragging = false; dragId = null;
+      dragging = false;
+      dragId = null;
     }
   }
 
   function handleCanvasMousemove(e: MouseEvent) {
     if (!dragging) return;
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    console.debug('[handleCanvasMousemove] dragging', { mx, my });
     socket.emit('drag', { x: mx, y: my });
   }
 
@@ -79,17 +98,19 @@
           img = new Image();
           img.src = o.image;
           spriteCache[id] = img;
-          img.onload = () => draw();
+          img.onload = () => {
+            console.debug('[draw] Image loaded for', id);
+            draw();
+          };
         }
-        // rotate the image around its center
-        ctx.save();                               // :contentReference[oaicite:7]{index=7}
-        ctx.translate(o.x, o.y);                 // :contentReference[oaicite:8]{index=8}
-        ctx.rotate(o.angle);                     // :contentReference[oaicite:9]{index=9}
-        ctx.drawImage(img, -o.width/2, -o.height/2, o.width, o.height);  // :contentReference[oaicite:10]{index=10}
-        ctx.restore();                            // :contentReference[oaicite:11]{index=11}
+        ctx.save();
+        ctx.translate(o.x, o.y);
+        ctx.rotate(o.angle);
+        ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
+        ctx.restore();
       } else {
         ctx.beginPath();
-        ctx.arc(o.x, o.y, RADIUS, 0, Math.PI*2);
+        ctx.arc(o.x, o.y, RADIUS, 0, Math.PI * 2);
         ctx.fillStyle = 'blue';
         ctx.fill();
       }
@@ -97,36 +118,58 @@
   }
 
   onMount(() => {
-    socket = io('http://localhost:3000');
+    console.info('[onMount] Connecting to socket server');
+    socket = io('http://localhost:3080');
+    socket.on('connect', () => console.info('[socket] Connected with id', socket.id));
+    socket.on('disconnect', (reason) => console.warn('[socket] Disconnected:', reason));
+
     reportSize();
-    reportInterval = setInterval(reportSize, 2000);
     window.addEventListener('resize', reportSize);
     window.addEventListener('mousemove', handleWindowMousemove);
     window.addEventListener('mouseleave', handleWindowMouseleave);
     window.addEventListener('mouseup', handleWindowMouseup);
 
     socket.on('canvasSize', ({ width, height }) => {
-      canvasWidth = width; canvasHeight = height;
-      canvas.width = width; canvas.height = height;
+      console.debug('[socket] canvasSize', { width, height });
+      canvasWidth = width;
+      canvasHeight = height;
+      if (canvas) {
+        canvas.width = width;
+        canvas.height = height;
+      }
     });
 
     socket.on('state', (data) => {
+      console.debug('[socket] state received', data);
       objects = {};
-      for (const o of data) objects[o.id] = o;
+      for (const o of data) {
+        objects[o.id] = o;
+      }
       draw();
     });
-    socket.on('mouseMoved', ({ id, x, y }) => { mousePositions[id] = { x, y }; });
-    socket.on('mouseRemoved', ({ id }) => { delete mousePositions[id]; });
+
+    socket.on('mouseMoved', ({ id, x, y }) => {
+      console.debug('[socket] mouseMoved', { id, x, y });
+      mousePositions[id] = { x, y };
+    });
+
+    socket.on('mouseRemoved', ({ id }) => {
+      console.debug('[socket] mouseRemoved', id);
+      delete mousePositions[id];
+    });
 
     ctx = canvas.getContext('2d')!;
   });
 
   onDestroy(() => {
-    clearInterval(reportInterval);
+    console.info('[onDestroy] Cleaning up');
     window.removeEventListener('resize', reportSize);
     window.removeEventListener('mousemove', handleWindowMousemove);
     window.removeEventListener('mouseleave', handleWindowMouseleave);
     window.removeEventListener('mouseup', handleWindowMouseup);
+    if (socket) {
+      socket.disconnect();
+    }
   });
 </script>
 
@@ -140,7 +183,7 @@
       on:mousedown={handleCanvasMousedown}
       on:mousemove={handleCanvasMousemove}
     ></canvas>
-    {#each Object.entries(mousePositions) as [clientId,pos]}
+    {#each Object.entries(mousePositions) as [clientId, pos]}
       <div
         class="cursor"
         style="
