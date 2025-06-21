@@ -17,23 +17,20 @@ const io     = new Server(server, { cors: { origin: '*' } });
 const WALL_THICKNESS   = 10;
 const RESPAWN_MARGIN   = 50;
 const SCENE_FILE       = path.join(__dirname, 'scene.json');
-const CLEANUP_INTERVAL = 2000;  // ms between stale‐client sweeps
 
-// ─── LOAD SCENE ─────────────────────────────────────────────────────────────
 const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
 
 // ─── PHYSICS SETUP ─────────────────────────────────────────────────────────
 const engine = Engine.create();
 const world  = engine.world;
 
-// static walls + floor
 let walls = { left: null, right: null, bottom: null };
 let canvasSize = { width: 800, height: 600 };
 
 function recreateWalls() {
   if (walls.left) World.remove(world, [walls.left, walls.right, walls.bottom]);
   const { width, height } = canvasSize;
-  const h = height * 20;  // effectively infinite
+  const h = height * 20;
 
   walls.left   = Bodies.rectangle(-WALL_THICKNESS/2, height/2, WALL_THICKNESS, h, { isStatic: true });
   walls.right  = Bodies.rectangle(width + WALL_THICKNESS/2, height/2, WALL_THICKNESS, h, { isStatic: true });
@@ -43,7 +40,6 @@ function recreateWalls() {
 }
 recreateWalls();
 
-// dynamic bodies
 const bodies = [], DYNAMIC_BODIES = [];
 
 for (const cfg of sceneData) {
@@ -96,7 +92,6 @@ io.on('connection', socket => {
     updateCanvasSize();
   });
 
-  // drag & throw
   let dragC = null;
   socket.on('startDrag', ({ id, x, y }) => {
     if (dragC) return;
@@ -118,12 +113,10 @@ io.on('connection', socket => {
     }
   });
 
-  // cursors
   socket.on('movemouse', pos => io.emit('mouseMoved', { id: socket.id, ...pos }));
   socket.on('mouseLeave', () => socket.broadcast.emit('mouseRemoved', { id: socket.id }));
 });
 
-// physics loop + state
 setInterval(() => {
   Engine.update(engine, 1000/60);
 

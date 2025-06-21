@@ -119,7 +119,7 @@
 
   onMount(() => {
     console.info('[onMount] Connecting to socket server');
-    socket = io('http://localhost:3080');
+    socket = io('https://iotservice.nl', { transports: ['websocket'] });
     socket.on('connect', () => console.info('[socket] Connected with id', socket.id));
     socket.on('disconnect', (reason) => console.warn('[socket] Disconnected:', reason));
 
