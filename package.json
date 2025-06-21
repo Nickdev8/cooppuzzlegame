@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build-client": "git pull && cd client && npm install && npm run build",
+    "build-client": "cd client && npm install && npm run build",
     "deploy-client": "rm -rf /var/www/escape-room-client/* && cp -r client/build/* /var/www/escape-room-client/ && chown -R www-data:www-data /var/www/escape-room-client",
     "deploy-server": "cd server && npm install && pm2 restart escape-room-server",
     "reload-nginx": "systemctl reload nginx",
