@@ -145,10 +145,10 @@
 
 		const size = 32;
 		for (const [clientId, pos] of Object.entries(mousePositions)) {
-			if (clientId == socket.id) return;
+			if (clientId === socket.id) continue;
 			ctx.drawImage(cursorImg, pos.x - size / 2, pos.y - size / 2, size, size);
 		}
-
+		
 		log('[draw] done');
 	}
 
