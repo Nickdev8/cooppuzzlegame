@@ -16,6 +16,8 @@
 	let ctx: CanvasRenderingContext2D;
 	let socket: Socket;
 
+	let cursorImg: HTMLImageElement;
+
 	let canvasWidth = 800;
 	let canvasHeight = 600;
 	let objects: Record<string, BodyState> = {};
@@ -140,28 +142,24 @@
 		const t1 = performance.now();
 		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
 
+		const size = 32;
 		for (const [clientId, pos] of Object.entries(mousePositions)) {
-			ctx.save();
-
-			ctx.beginPath();
-			ctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2);
-			ctx.fillStyle = 'red';
-			ctx.fill();
-
-			ctx.lineWidth = 2;
-			ctx.strokeStyle = 'yellow';
-			ctx.stroke();
-
-			ctx.restore();
-
-			ctx.fillStyle = 'black';
-			ctx.font = '12px sans-serif';
-			ctx.fillText(clientId, pos.x + 10, pos.y - 10);
+			ctx.drawImage(cursorImg, pos.x - size / 2, pos.y - size / 2, size, size);
 		}
+
+		log('[draw] done');
 	}
 
 	onMount(() => {
 		log('[onMount] initializing');
+
+		cursorImg = new Image();
+		cursorImg.src = '/path/to/cursor.svg';
+		cursorImg.onload = () => {
+			log('[onMount] cursor SVG loaded');
+			draw();
+		};
+
 		if (!canvas) {
 			console.error('[onMount] canvas ref not set!');
 			return;
