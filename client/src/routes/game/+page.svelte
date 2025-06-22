@@ -173,8 +173,8 @@
 
 			canvasWidth = newW;
 			canvasHeight = newH;
-			canvas.width = newW;
-			canvas.height = newH;
+			canvas.width = origW;
+			canvas.height = origH;
 		});
 
 		socket.on('state', (data: BodyState[]) => {
