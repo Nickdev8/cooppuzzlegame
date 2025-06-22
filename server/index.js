@@ -63,7 +63,6 @@ for (const cfg of sceneData) {
   DYNAMIC_BODIES.push(b);
 }
 
-// client tracking
 const clientSizes = new Map();
 
 function updateCanvasSize() {

@@ -10,19 +10,3 @@
     padding: 0;
     overflow: hidden;
 }
-
-body{
-    background-color: black;
-
-}
-
-canvas{
-    background-color: white;
-}
-
-.full-height {
-  height: calc(var(--vh) * 100);
-  width: 100vw;
-  position: relative;
-  overflow: hidden;
-}
