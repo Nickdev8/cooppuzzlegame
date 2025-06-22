@@ -28,11 +28,12 @@
 	const RADIUS = 20;
 	let spriteCache: Record<string, HTMLImageElement> = {};
 
-	const log = (...args: any[]) => console.debug('[ESCAPE-CLIENT]', ...args);
+	// const log = (...args: any[]) => console.log(...args);
+	const log = (...args: any[]) => {};
 
 	function reportSize(): void {
 		const size = { width: window.innerWidth, height: window.innerHeight };
-		log('→ reportSize()', size);
+		log('reportSize()', size);
 		try {
 			socket.emit('initSize', size);
 		} catch (err) {
@@ -45,7 +46,7 @@
 		const rect = canvas.getBoundingClientRect();
 		const x = e.clientX - rect.left;
 		const y = e.clientY - rect.top;
-		log('→ handleWindowMousemove', { x, y, dragging });
+		log('handleWindowMousemove', { x, y, dragging });
 		try {
 			if (x >= 0 && y >= 0 && x <= canvasWidth && y <= canvasHeight) {
 				socket.emit('movemouse', { x, y });
@@ -61,12 +62,12 @@
 	}
 
 	function handleWindowMouseleave(): void {
-		log('→ handleWindowMouseleave');
+		log('handleWindowMouseleave');
 		socket.emit('mouseLeave');
 	}
 
 	function handleWindowMouseup(): void {
-		log('→ handleWindowMouseup', { dragging, dragId });
+		log('handleWindowMouseup', { dragging, dragId });
 		if (dragging) {
 			socket.emit('endDrag');
 			dragging = false;
@@ -78,7 +79,7 @@
 		const rect = canvas.getBoundingClientRect();
 		const mx = e.clientX - rect.left;
 		const my = e.clientY - rect.top;
-		log('→ handleCanvasMousedown', { mx, my });
+		log('handleCanvasMousedown', { mx, my });
 		let hit = false;
 		for (const id in objects) {
 			const o = objects[id];
@@ -106,7 +107,7 @@
 		const rect = canvas.getBoundingClientRect();
 		const mx = e.clientX - rect.left;
 		const my = e.clientY - rect.top;
-		log('→ handleCanvasMousemove (dragging)', { mx, my });
+		log('handleCanvasMousemove (dragging)', { mx, my });
 		socket.emit('drag', { x: mx, y: my });
 	}
 
@@ -144,6 +145,7 @@
 
 		const size = 32;
 		for (const [clientId, pos] of Object.entries(mousePositions)) {
+			if (clientId == socket.id) return;
 			ctx.drawImage(cursorImg, pos.x - size / 2, pos.y - size / 2, size, size);
 		}
 
