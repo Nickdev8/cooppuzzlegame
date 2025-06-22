@@ -25,7 +25,7 @@ const engine = Engine.create();
 const world  = engine.world;
 
 let walls = { left: null, right: null, bottom: null };
-let canvasSize = { width: 800, height: 600 };
+let canvasSize = { width: 1920, height: 1080 };
 
 const anchoredBodies = [];
 
@@ -99,45 +99,9 @@ for (const cfg of sceneData) {
   }
 }
 
-const clientSizes = new Map();
-
-function updateCanvasSize() {
-  let minW = Infinity, minH = Infinity;
-  for (const { width, height } of clientSizes.values()) {
-    minW = Math.min(minW, width);
-    minH = Math.min(minH, height);
-  }
-  if (minW === Infinity) return;
-
-  canvasSize = { width: minW, height: minH };
-  io.emit('canvasSize', canvasSize);
-  recreateWalls();
-
-  // reposition all anchors
-  for (const { cfg, C, fp } of anchoredBodies) {
-    const baseX = canvasSize.width  * (cfg.screen.xPercent ?? 0) + (cfg.offset?.x || 0);
-    const baseY = canvasSize.height * (cfg.screen.yPercent ?? 0) + (cfg.offset?.y || 0);
-    const w     = cfg.width  ?? cfg.radius * 2;
-    const h     = cfg.height ?? cfg.radius * 2;
-    const localX = fp.offsetX != null ? fp.offsetX : (fp.percentX ?? 0) * w;
-    const localY = fp.offsetY != null ? fp.offsetY : (fp.percentY ?? 0) * h;
-    const halfW  = w / 2;
-    const halfH  = h / 2;
-    C.pointA.x = baseX + (localX - halfW);
-    C.pointA.y = baseY + (localY - halfH);
-  }
-}
-
 io.on('connection', socket => {
-  socket.on('initSize', ({ width, height }) => {
-    clientSizes.set(socket.id, { width, height });
-    updateCanvasSize();
-  });
-
   socket.on('disconnect', () => {
-    clientSizes.delete(socket.id);
     socket.broadcast.emit('mouseRemoved', { id: socket.id });
-    updateCanvasSize();
   });
 
   let dragC = null;

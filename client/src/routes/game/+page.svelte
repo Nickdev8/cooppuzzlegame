@@ -155,6 +155,13 @@
 	onMount(() => {
 		log('[onMount] initializing');
 
+		canvasWidth = 1920;
+		canvasHeight = 1080;
+		canvas.width = 1920;
+		canvas.height = 1080;
+		canvas.style.width = '100%';
+		canvas.style.height = 'auto';
+
 		cursorImg = new Image();
 		cursorImg.src = '/images/cursor.svg';
 		cursorImg.onload = () => {
@@ -172,30 +179,6 @@
 		socket.on('connect', () => log('[socket] connect — id:', socket.id));
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
 		socket.on('disconnect', (reason) => console.warn('[socket] disconnect:', reason));
-
-		socket.on('canvasSize', ({ width: origW, height: origH }) => {
-			const winW = window.innerWidth;
-			const winH = window.innerHeight;
-			const canvasRatio = origW / origH;
-			const windowRatio = winW / winH;
-
-			let displayW: number, displayH: number;
-			if (windowRatio > canvasRatio) {
-				displayH = winH;
-				displayW = displayH * canvasRatio;
-			} else {
-				displayW = winW;
-				displayH = displayW / canvasRatio;
-			}
-
-			canvasWidth = origW;
-			canvasHeight = origH;
-			canvas.width = origW;
-			canvas.height = origH;
-
-			canvas.style.width = `${displayW}px`;
-			canvas.style.height = `${displayH}px`;
-		});
 
 		socket.on('state', (data: BodyState[]) => {
 			log('[socket] state received —', data.length, 'bodies');
