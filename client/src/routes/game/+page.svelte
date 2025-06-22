@@ -139,6 +139,25 @@
 		}
 		const t1 = performance.now();
 		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
+
+		for (const [clientId, pos] of Object.entries(mousePositions)) {
+			ctx.save();
+
+			ctx.beginPath();
+			ctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2);
+			ctx.fillStyle = 'red';
+			ctx.fill();
+
+			ctx.lineWidth = 2;
+			ctx.strokeStyle = 'yellow';
+			ctx.stroke();
+
+			ctx.restore();
+
+			ctx.fillStyle = 'black';
+			ctx.font = '12px sans-serif';
+			ctx.fillText(clientId, pos.x + 10, pos.y - 10);
+		}
 	}
 
 	onMount(() => {
@@ -222,26 +241,9 @@
 		on:mousedown={handleCanvasMousedown}
 		on:mousemove={handleCanvasMousemove}
 	></canvas>
-	{#each Object.entries(mousePositions) as [clientId, pos]}
-		<div
-			class="cursor"
-			style="
-          position:absolute;
-          left:{pos.x}px; top:{pos.y}px;
-          width:8px; height:8px;
-          background:red; border-radius:50%;
-          transform:translate(-50%,-50%);
-          pointer-events:none;
-        "
-		></div>
-	{/each}
 </div>
 
 <style>
-	.cursor {
-		border: 1px solid yellow;
-	}
-
 	canvas {
 		background-color: white;
 	}
