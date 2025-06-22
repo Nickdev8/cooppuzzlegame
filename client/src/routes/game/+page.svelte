@@ -44,11 +44,14 @@
 	function handleWindowMousemove(e: MouseEvent): void {
 		if (!canvas) return;
 		const rect = canvas.getBoundingClientRect();
-		const x = e.clientX - rect.left;
-		const y = e.clientY - rect.top;
+		const scaleX = canvas.width / rect.width;
+		const scaleY = canvas.height / rect.height;
+		const x = (e.clientX - rect.left) * scaleX;
+		const y = (e.clientY - rect.top) * scaleY;
+
 		log('handleWindowMousemove', { x, y, dragging });
 		try {
-			if (x >= 0 && y >= 0 && x <= canvasWidth && y <= canvasHeight) {
+			if (x >= 0 && y >= 0 && x <= canvas.width && y <= canvas.height) {
 				socket.emit('movemouse', { x, y });
 			} else {
 				socket.emit('mouseLeave');
@@ -77,8 +80,10 @@
 
 	function handleCanvasMousedown(e: MouseEvent): void {
 		const rect = canvas.getBoundingClientRect();
-		const mx = e.clientX - rect.left;
-		const my = e.clientY - rect.top;
+		const scaleX = canvas.width / rect.width;
+		const scaleY = canvas.height / rect.height;
+		const mx = (e.clientX - rect.left) * scaleX;
+		const my = (e.clientY - rect.top) * scaleY;
 		log('handleCanvasMousedown', { mx, my });
 		let hit = false;
 		for (const id in objects) {
@@ -105,8 +110,10 @@
 	function handleCanvasMousemove(e: MouseEvent): void {
 		if (!dragging) return;
 		const rect = canvas.getBoundingClientRect();
-		const mx = e.clientX - rect.left;
-		const my = e.clientY - rect.top;
+		const scaleX = canvas.width / rect.width;
+		const scaleY = canvas.height / rect.height;
+		const mx = (e.clientX - rect.left) * scaleX;
+		const my = (e.clientY - rect.top) * scaleY;
 		log('handleCanvasMousemove (dragging)', { mx, my });
 		socket.emit('drag', { x: mx, y: my });
 	}
@@ -230,6 +237,10 @@
 <style>
 	canvas {
 		background-color: white;
+		width: 100%;
+		height: auto;
+		max-height: 100vh;
+		display: block;
 	}
 
 	.full-height {
