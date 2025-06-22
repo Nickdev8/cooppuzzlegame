@@ -154,7 +154,7 @@
 		log('[onMount] initializing');
 
 		cursorImg = new Image();
-		cursorImg.src = '/path/to/cursor.svg';
+		cursorImg.src = '/images/cursor.svg';
 		cursorImg.onload = () => {
 			log('[onMount] cursor SVG loaded');
 			draw();
