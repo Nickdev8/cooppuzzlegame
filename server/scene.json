@@ -2,15 +2,31 @@
   {
     "id": "ball1",
     "type": "circle",
-    "x": 300,
-    "y": 100,
-    "radius": 20,
-    "mass": 0.002,
-    "restitution": 0.9,
-    "friction": 0.05,
-    "image": "/images/ball.png",
     "width": 40,
-    "height": 40
+    "height": 40,
+    "mass": 0.005,
+    "restitution": 0.3,
+    "friction": 0.1,
+    "image": "/images/box.png",
+    
+    "screen": {
+      "xPercent": 0.3,
+      "yPercent": 0.5
+    },
+    "offset": {
+      "x": 10,
+      "y": 20
+    },
+    "fixedPoints": [
+      {
+        "offsetX": 30,
+        "offsetY": 0
+      },
+      {
+        "percentX": 0,
+        "percentY": 1
+      }
+    ]
   },
   {
     "id": "ball2",

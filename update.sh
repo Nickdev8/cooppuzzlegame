@@ -167,5 +167,6 @@ msg=${kaomojis[index]}
 # run git
 git add .
 git commit -m "$msg"
+git push
 
 ssh nickesselman.nl 'cd ~/escape-room/ && git pull && sudo npm run deploy'

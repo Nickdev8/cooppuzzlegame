@@ -14,9 +14,9 @@ const server = http.createServer(app);
 const io     = new Server(server, { cors: { origin: '*' } });
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
-const WALL_THICKNESS   = 10;
-const RESPAWN_MARGIN   = 50;
-const SCENE_FILE       = path.join(__dirname, 'scene.json');
+const WALL_THICKNESS = 10;
+const RESPAWN_MARGIN = 50;
+const SCENE_FILE     = path.join(__dirname, 'scene.json');
 
 const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
 
@@ -26,6 +26,8 @@ const world  = engine.world;
 
 let walls = { left: null, right: null, bottom: null };
 let canvasSize = { width: 800, height: 600 };
+
+const anchoredBodies = [];
 
 function recreateWalls() {
   if (walls.left) World.remove(world, [walls.left, walls.right, walls.bottom]);
@@ -43,16 +45,26 @@ recreateWalls();
 const bodies = [], DYNAMIC_BODIES = [];
 
 for (const cfg of sceneData) {
-  let b, opts = {
-    mass: cfg.mass  ?? 1,
+  let baseX, baseY;
+  if (cfg.screen) {
+    baseX = canvasSize.width  * (cfg.screen.xPercent ?? 0) + (cfg.offset?.x || 0);
+    baseY = canvasSize.height * (cfg.screen.yPercent ?? 0) + (cfg.offset?.y || 0);
+  } else {
+    baseX = cfg.x;
+    baseY = cfg.y;
+  }
+
+  const opts = {
+    mass:        cfg.mass        ?? 1,
     restitution: cfg.restitution ?? 0.2,
-    friction: cfg.friction ?? 0.1
+    friction:    cfg.friction    ?? 0.1
   };
 
+  let b;
   if (cfg.type === 'circle') {
-    b = Bodies.circle(cfg.x, cfg.y, cfg.radius, opts);
+    b = Bodies.circle(baseX, baseY, cfg.radius, opts);
   } else if (cfg.type === 'rectangle') {
-    b = Bodies.rectangle(cfg.x, cfg.y, cfg.width, cfg.height, opts);
+    b = Bodies.rectangle(baseX, baseY, cfg.width, cfg.height, opts);
   } else {
     continue;
   }
@@ -61,6 +73,30 @@ for (const cfg of sceneData) {
   World.add(world, b);
   bodies.push({ body: b, renderHint: cfg });
   DYNAMIC_BODIES.push(b);
+
+  // attach any fixed-point constraints
+  if (Array.isArray(cfg.fixedPoints)) {
+    const w = cfg.width  ?? cfg.radius * 2;
+    const h = cfg.height ?? cfg.radius * 2;
+    for (const fp of cfg.fixedPoints) {
+      const localX = fp.offsetX != null ? fp.offsetX : (fp.percentX ?? 0) * w;
+      const localY = fp.offsetY != null ? fp.offsetY : (fp.percentY ?? 0) * h;
+      const halfW   = w / 2;
+      const halfH   = h / 2;
+      const worldX  = baseX + (localX - halfW);
+      const worldY  = baseY + (localY - halfH);
+      const C = Constraint.create({
+        pointA:    { x: worldX, y: worldY },
+        bodyB:     b,
+        pointB:    { x: localX - halfW, y: localY - halfH },
+        length:    0,
+        stiffness: fp.stiffness ?? 1,
+        damping:   fp.damping   ?? 0.1
+      });
+      World.add(world, C);
+      anchoredBodies.push({ cfg, C, fp });
+    }
+  }
 }
 
 const clientSizes = new Map();
@@ -76,9 +112,22 @@ function updateCanvasSize() {
   canvasSize = { width: minW, height: minH };
   io.emit('canvasSize', canvasSize);
   recreateWalls();
+
+  // reposition all anchors
+  for (const { cfg, C, fp } of anchoredBodies) {
+    const baseX = canvasSize.width  * (cfg.screen.xPercent ?? 0) + (cfg.offset?.x || 0);
+    const baseY = canvasSize.height * (cfg.screen.yPercent ?? 0) + (cfg.offset?.y || 0);
+    const w     = cfg.width  ?? cfg.radius * 2;
+    const h     = cfg.height ?? cfg.radius * 2;
+    const localX = fp.offsetX != null ? fp.offsetX : (fp.percentX ?? 0) * w;
+    const localY = fp.offsetY != null ? fp.offsetY : (fp.percentY ?? 0) * h;
+    const halfW  = w / 2;
+    const halfH  = h / 2;
+    C.pointA.x = baseX + (localX - halfW);
+    C.pointA.y = baseY + (localY - halfH);
+  }
 }
 
-// ─── SOCKET.IO ───────────────────────────────────────────────────────────────
 io.on('connection', socket => {
   socket.on('initSize', ({ width, height }) => {
     clientSizes.set(socket.id, { width, height });
@@ -99,12 +148,14 @@ io.on('connection', socket => {
     dragC = Constraint.create({ pointA: { x, y }, bodyB: entry.body, pointB: { x: 0, y: 0 }, stiffness: 0.1, damping: 0.02 });
     World.add(world, dragC);
   });
+
   socket.on('drag', ({ x, y }) => {
     if (dragC) {
       dragC.pointA.x = x;
       dragC.pointA.y = y;
     }
   });
+
   socket.on('endDrag', () => {
     if (dragC) {
       World.remove(world, dragC);
@@ -129,17 +180,15 @@ setInterval(() => {
     }
   }
 
-  io.emit('state',
-    bodies.map(({ body, renderHint }) => ({
-      id:     body.label,
-      x:      body.position.x,
-      y:      body.position.y,
-      angle:  body.angle,
-      image:  renderHint.image,
-      width:  renderHint.width,
-      height: renderHint.height
-    }))
-  );
+  io.emit('state', bodies.map(({ body, renderHint }) => ({
+    id:     body.label,
+    x:      body.position.x,
+    y:      body.position.y,
+    angle:  body.angle,
+    image:  renderHint.image,
+    width:  renderHint.width,
+    height: renderHint.height
+  })));
 }, 1000/60);
 
 server.listen(3080, () => console.log('Server on https://iotservice.nl:3080'));
