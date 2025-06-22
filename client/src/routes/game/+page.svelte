@@ -18,7 +18,7 @@
 	let ctx: CanvasRenderingContext2D;
 	let socket: Socket;
 
-	const cursorImg = new Image();
+	let cursorImg: HTMLImageElement;
 	const cursorSize = 32;
 
 	interface CursorHuesMap {
@@ -144,13 +144,39 @@
 
 	function draw(): void {
 		const t0 = performance.now();
-
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		for (const id in objects) {
+			const o = objects[id];
+			if (o.image) {
+				let img = spriteCache[id];
+				if (!img) {
+					img = new Image();
+					img.src = o.image;
+					spriteCache[id] = img;
+					img.onload = () => {
+						log('[draw] Image loaded for', id);
+						draw();
+					};
+					img.onerror = (e) => console.error('[draw] Image load error for', id, e);
+				}
+				ctx.save();
+				ctx.translate(o.x, o.y);
+				ctx.rotate(o.angle);
+				ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
+				ctx.restore();
+			} else {
+				ctx.beginPath();
+				ctx.arc(o.x, o.y, RADIUS, 0, Math.PI * 2);
+				ctx.fillStyle = 'blue';
+				ctx.fill();
+			}
+		}
 
 		for (const clientId in mousePositions) {
 			if (clientId === socket.id) continue;
 
-			const pos = mousePositions[clientId]!; // non-null assertion
+			const pos = mousePositions[clientId]!;
 			const hue = cursorHues[clientId] ?? 0;
 
 			ctx.save();
@@ -181,35 +207,8 @@
 			ctx.restore();
 		}
 
-		// Reset filter for future drawings
 		ctx.filter = 'none';
 
-		for (const id in objects) {
-			const o = objects[id];
-			if (o.image) {
-				let img = spriteCache[id];
-				if (!img) {
-					img = new Image();
-					img.src = o.image;
-					spriteCache[id] = img;
-					img.onload = () => {
-						log('[draw] Image loaded for', id);
-						draw();
-					};
-					img.onerror = (e) => console.error('[draw] Image load error for', id, e);
-				}
-				ctx.save();
-				ctx.translate(o.x, o.y);
-				ctx.rotate(o.angle);
-				ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
-				ctx.restore();
-			} else {
-				ctx.beginPath();
-				ctx.arc(o.x, o.y, RADIUS, 0, Math.PI * 2);
-				ctx.fillStyle = 'blue';
-				ctx.fill();
-			}
-		}
 		const t1 = performance.now();
 		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
 
@@ -233,10 +232,11 @@
 		canvas.style.width = '100%';
 		canvas.style.height = 'auto';
 
+		cursorImg = new Image(); // 'let' allows reassignment here
 		cursorImg.src = '/images/cursor.svg';
 		cursorImg.onload = () => {
-			log('[onMount] cursor SVG loaded');
-			draw();
+			console.log('Cursor SVG loaded');
+			draw(); // or start your render loop
 		};
 
 		if (!canvas) {
