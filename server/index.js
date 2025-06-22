@@ -127,7 +127,14 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('movemouse', pos => io.emit('mouseMoved', { id: socket.id, ...pos }));
+  socket.on('movemouse', pos => {
+    socket.broadcast.emit('mouseMoved', {
+      id: socket.id,
+      x: pos.x,
+      y: pos.y
+    });
+  });
+
   socket.on('mouseLeave', () => socket.broadcast.emit('mouseRemoved', { id: socket.id }));
 });
 

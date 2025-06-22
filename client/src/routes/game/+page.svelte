@@ -174,10 +174,8 @@
 		}
 
 		for (const clientId in mousePositions) {
-			if (clientId === socket.id) continue;
-
 			const pos = mousePositions[clientId]!;
-			const hue = cursorHues[clientId] ?? 0;
+			const hue = cursorHues[clientId]!;
 
 			ctx.save();
 			ctx.filter = `hue-rotate(${hue}deg)`;
@@ -185,22 +183,6 @@
 				cursorImg,
 				pos.x - cursorSize / 2,
 				pos.y - cursorSize / 2,
-				cursorSize,
-				cursorSize
-			);
-			ctx.restore();
-		}
-
-		const localId = socket.id!;
-		const localPos = mousePositions[localId];
-		if (localPos) {
-			const localHue = cursorHues[localId]!;
-			ctx.save();
-			ctx.filter = `hue-rotate(${localHue}deg)`;
-			ctx.drawImage(
-				cursorImg,
-				localPos.x - cursorSize / 2,
-				localPos.y - cursorSize / 2,
 				cursorSize,
 				cursorSize
 			);
@@ -257,11 +239,9 @@
 
 		// update
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			// reset and repopulate all objects
 			objects = {};
 			payload.bodies.forEach((o) => (objects[o.id] = o));
 
-			// update anchor positions
 			anchors = payload.anchors;
 
 			draw();
@@ -269,6 +249,11 @@
 
 		socket.on('mouseMoved', (payload: { id: string; x: number; y: number }) => {
 			const { id, x, y } = payload;
+
+			if (id === socket.id) {
+				return;
+			}
+
 			mousePositions[id] = { x, y };
 
 			if (cursorHues[id] === undefined) {
@@ -301,7 +286,7 @@
 		bind:this={canvas}
 		width={canvasWidth}
 		height={canvasHeight}
-		style="cursor: url('/images/cursor.svg') 32 32, auto;"
+		style="cursor:url(''/images/cursor.svg') 14 8, auto"
 		on:mousedown={handleCanvasMousedown}
 		on:mousemove={handleCanvasMousemove}
 	></canvas>
@@ -314,7 +299,6 @@
 		height: auto;
 		max-height: 100vh;
 		display: block;
-		cursor: none;
 	}
 
 	.full-height {
