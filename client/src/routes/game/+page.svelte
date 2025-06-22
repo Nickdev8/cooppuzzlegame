@@ -18,7 +18,10 @@
 	let ctx: CanvasRenderingContext2D;
 	let socket: Socket;
 
-	let cursorImg: HTMLImageElement;
+	let cursorImg = new Image();
+	cursorImg.src = '/images/cursor.svg';
+	const cursorSize = 32;
+	const cursorHues: Record<string, number> = {};
 
 	let canvasWidth = 800;
 	let canvasHeight = 600;
@@ -32,6 +35,24 @@
 
 	const log = (...args: any[]) => console.log(...args);
 	// const log = (...args: any[]) => {};
+
+	function colorForId(id: string): string {
+		let hash = 0;
+		for (let i = 0; i < id.length; i++) {
+			hash = (hash * 31 + id.charCodeAt(i)) | 0;
+		}
+		const hue = (hash >>> 0) % 360;
+		return `hsl(${hue},100%,50%)`;
+	}
+
+	function makeCursorDataURL(color: string): string {
+		const svg = `
+     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 32 32">
+       <path d="M1,1 L31,16 L1,31 Z" fill="${color}" stroke="black" stroke-width="1"/>
+     </svg>
+   `.trim();
+		return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+	}
 
 	function handleWindowMousemove(e: MouseEvent): void {
 		if (!canvas) return;
@@ -144,9 +165,14 @@
 
 		const size = 32;
 		for (const [clientId, pos] of Object.entries(mousePositions)) {
-			if (clientId === socket.id) continue;
+			const size = cursorSize;
+			const hue = cursorHues[clientId];
+			ctx.save();
+			ctx.filter = `hue-rotate(${hue}deg)`;
 			ctx.drawImage(cursorImg, pos.x - size / 2, pos.y - size / 2, size, size);
+			ctx.restore();
 		}
+		ctx.filter = 'none';
 
 		ctx.fillStyle = 'red';
 		for (const p of anchors) {
@@ -198,9 +224,11 @@
 			draw();
 		});
 
-		socket.on('mouseMoved', ({ id, x, y }: { id: string; x: number; y: number }) => {
-			log('[socket] mouseMoved', { id, x, y });
+		socket.on('mouseMoved', ({ id, x, y }) => {
 			mousePositions[id] = { x, y };
+			if (!cursorHues[id]) {
+				cursorHues[id] = Math.floor(Math.random() * 360);
+			}
 		});
 
 		socket.on('mouseRemoved', ({ id }: { id: string }) => {
@@ -227,7 +255,6 @@
 		bind:this={canvas}
 		width={canvasWidth}
 		height={canvasHeight}
-		style="cursor: url('/images/cursor.svg') 16 16, auto;"
 		on:mousedown={handleCanvasMousedown}
 		on:mousemove={handleCanvasMousemove}
 	></canvas>
@@ -240,6 +267,7 @@
 		height: auto;
 		max-height: 100vh;
 		display: block;
+		cursor: none;
 	}
 
 	.full-height {

@@ -1,1 +1,6 @@
-<h2>hi</h2>
+<a href="/game">Game</a>
+<style>
+    a{
+        color: white;
+    }
+</style>
