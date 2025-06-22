@@ -157,24 +157,25 @@
 		socket.on('canvasSize', ({ width: origW, height: origH }) => {
 			const winW = window.innerWidth;
 			const winH = window.innerHeight;
-
 			const canvasRatio = origW / origH;
 			const windowRatio = winW / winH;
 
-			let newW: number, newH: number;
-
+			let displayW: number, displayH: number;
 			if (windowRatio > canvasRatio) {
-				newH = winH;
-				newW = newH * canvasRatio;
+				displayH = winH;
+				displayW = displayH * canvasRatio;
 			} else {
-				newW = winW;
-				newH = newW / canvasRatio;
+				displayW = winW;
+				displayH = displayW / canvasRatio;
 			}
 
-			canvasWidth = newW;
-			canvasHeight = newH;
+			canvasWidth = origW;
+			canvasHeight = origH;
 			canvas.width = origW;
 			canvas.height = origH;
+
+			canvas.style.width = `${displayW}px`;
+			canvas.style.height = `${displayH}px`;
 		});
 
 		socket.on('state', (data: BodyState[]) => {
