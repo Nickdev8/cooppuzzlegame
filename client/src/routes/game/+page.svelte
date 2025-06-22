@@ -301,6 +301,7 @@
 		bind:this={canvas}
 		width={canvasWidth}
 		height={canvasHeight}
+		style="cursor: url('/images/cursor.svg') 32 32, auto;"
 		on:mousedown={handleCanvasMousedown}
 		on:mousemove={handleCanvasMousemove}
 	></canvas>
