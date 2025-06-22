@@ -148,7 +148,7 @@
 			if (clientId === socket.id) continue;
 			ctx.drawImage(cursorImg, pos.x - size / 2, pos.y - size / 2, size, size);
 		}
-		
+
 		log('[draw] done');
 	}
 
