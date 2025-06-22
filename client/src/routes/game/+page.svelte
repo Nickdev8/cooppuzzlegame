@@ -154,26 +154,27 @@
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
 		socket.on('disconnect', (reason) => console.warn('[socket] disconnect:', reason));
 
-		socket.on('canvasSize', ({ width, height }: { width: number; height: number }) => {
-			log('[socket] canvasSize', { width, height });
+		socket.on('canvasSize', ({ width: origW, height: origH }) => {
+			const winW = window.innerWidth;
+			const winH = window.innerHeight;
 
-			if (window.innerHeight > height && window.innerWidth > width) {
-				var hightdiff = window.innerHeight - height;
-				var widthdiff = window.innerWidth - width;
+			const canvasRatio = origW / origH;
+			const windowRatio = winW / winH;
 
-				if (hightdiff > widthdiff) {
-					height - widthdiff;
-					width - widthdiff;
-				} else {
-					height - hightdiff;
-					width - hightdiff;
-				}
+			let newW: number, newH: number;
+
+			if (windowRatio > canvasRatio) {
+				newH = winH;
+				newW = newH * canvasRatio;
+			} else {
+				newW = winW;
+				newH = newW / canvasRatio;
 			}
 
-			canvasWidth = width;
-			canvasHeight = height;
-			canvas.width = width;
-			canvas.height = height;
+			canvasWidth = newW;
+			canvasHeight = newH;
+			canvas.width = newW;
+			canvas.height = newH;
 		});
 
 		socket.on('state', (data: BodyState[]) => {
@@ -238,10 +239,6 @@
 <style>
 	.cursor {
 		border: 1px solid yellow;
-	}
-
-	body {
-		background-color: black;
 	}
 
 	canvas {
