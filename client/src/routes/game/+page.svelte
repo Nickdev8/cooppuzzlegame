@@ -2,6 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import io, { Socket } from 'socket.io-client';
 
+	let anchors: { x: number; y: number }[] = [];
+
 	interface BodyState {
 		id: string;
 		x: number;
@@ -28,18 +30,8 @@
 	const RADIUS = 20;
 	let spriteCache: Record<string, HTMLImageElement> = {};
 
-	// const log = (...args: any[]) => console.log(...args);
-	const log = (...args: any[]) => {};
-
-	function reportSize(): void {
-		const size = { width: window.innerWidth, height: window.innerHeight };
-		log('reportSize()', size);
-		try {
-			socket.emit('initSize', size);
-		} catch (err) {
-			console.error('[reportSize] emit failed:', err);
-		}
-	}
+	const log = (...args: any[]) => console.log(...args);
+	// const log = (...args: any[]) => {};
 
 	function handleWindowMousemove(e: MouseEvent): void {
 		if (!canvas) return;
@@ -156,6 +148,13 @@
 			ctx.drawImage(cursorImg, pos.x - size / 2, pos.y - size / 2, size, size);
 		}
 
+		ctx.fillStyle = 'red';
+		for (const p of anchors) {
+			ctx.beginPath();
+			ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+			ctx.fill();
+		}
+
 		log('[draw] done');
 	}
 
@@ -187,12 +186,15 @@
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
 		socket.on('disconnect', (reason) => console.warn('[socket] disconnect:', reason));
 
-		socket.on('state', (data: BodyState[]) => {
-			log('[socket] state received —', data.length, 'bodies');
+		// update
+		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
+			// reset and repopulate all objects
 			objects = {};
-			data.forEach((o: BodyState) => {
-				objects[o.id] = o;
-			});
+			payload.bodies.forEach((o) => (objects[o.id] = o));
+
+			// update anchor positions
+			anchors = payload.anchors;
+
 			draw();
 		});
 
@@ -206,8 +208,6 @@
 			delete mousePositions[id];
 		});
 
-		reportSize();
-		window.addEventListener('resize', reportSize);
 		window.addEventListener('mousemove', handleWindowMousemove);
 		window.addEventListener('mouseleave', handleWindowMouseleave);
 		window.addEventListener('mouseup', handleWindowMouseup);
@@ -215,7 +215,6 @@
 
 	onDestroy(() => {
 		log('[onDestroy] cleaning up');
-		window.removeEventListener('resize', reportSize);
 		window.removeEventListener('mousemove', handleWindowMousemove);
 		window.removeEventListener('mouseleave', handleWindowMouseleave);
 		window.removeEventListener('mouseup', handleWindowMouseup);
