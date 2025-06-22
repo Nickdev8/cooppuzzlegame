@@ -18,15 +18,26 @@
 	let ctx: CanvasRenderingContext2D;
 	let socket: Socket;
 
-	let cursorImg = new Image();
-	cursorImg.src = '/images/cursor.svg';
+	const cursorImg = new Image();
 	const cursorSize = 32;
-	const cursorHues: Record<string, number> = {};
+
+	interface CursorHuesMap {
+		[id: string]: number;
+	}
+	const cursorHues: CursorHuesMap = {};
+
+	interface MousePosition {
+		x: number;
+		y: number;
+	}
+	interface MousePositionsMap {
+		[id: string]: MousePosition;
+	}
+	let mousePositions: MousePositionsMap = {};
 
 	let canvasWidth = 800;
 	let canvasHeight = 600;
 	let objects: Record<string, BodyState> = {};
-	let mousePositions: Record<string, { x: number; y: number }> = {};
 
 	let dragging = false;
 	let dragId: string | null = null;
@@ -133,7 +144,46 @@
 
 	function draw(): void {
 		const t0 = performance.now();
-		ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		for (const clientId in mousePositions) {
+			if (clientId === socket.id) continue;
+
+			const pos = mousePositions[clientId]!; // non-null assertion
+			const hue = cursorHues[clientId] ?? 0;
+
+			ctx.save();
+			ctx.filter = `hue-rotate(${hue}deg)`;
+			ctx.drawImage(
+				cursorImg,
+				pos.x - cursorSize / 2,
+				pos.y - cursorSize / 2,
+				cursorSize,
+				cursorSize
+			);
+			ctx.restore();
+		}
+
+		const localId = socket.id!;
+		const localPos = mousePositions[localId];
+		if (localPos) {
+			const localHue = cursorHues[localId]!;
+			ctx.save();
+			ctx.filter = `hue-rotate(${localHue}deg)`;
+			ctx.drawImage(
+				cursorImg,
+				localPos.x - cursorSize / 2,
+				localPos.y - cursorSize / 2,
+				cursorSize,
+				cursorSize
+			);
+			ctx.restore();
+		}
+
+		// Reset filter for future drawings
+		ctx.filter = 'none';
+
 		for (const id in objects) {
 			const o = objects[id];
 			if (o.image) {
@@ -163,17 +213,6 @@
 		const t1 = performance.now();
 		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
 
-		const size = 32;
-		for (const [clientId, pos] of Object.entries(mousePositions)) {
-			const size = cursorSize;
-			const hue = cursorHues[clientId];
-			ctx.save();
-			ctx.filter = `hue-rotate(${hue}deg)`;
-			ctx.drawImage(cursorImg, pos.x - size / 2, pos.y - size / 2, size, size);
-			ctx.restore();
-		}
-		ctx.filter = 'none';
-
 		ctx.fillStyle = 'red';
 		for (const p of anchors) {
 			ctx.beginPath();
@@ -194,7 +233,6 @@
 		canvas.style.width = '100%';
 		canvas.style.height = 'auto';
 
-		cursorImg = new Image();
 		cursorImg.src = '/images/cursor.svg';
 		cursorImg.onload = () => {
 			log('[onMount] cursor SVG loaded');
@@ -208,7 +246,12 @@
 		ctx = canvas.getContext('2d')!;
 		socket = io(location.origin, { transports: ['websocket'], timeout: 10000 });
 
-		socket.on('connect', () => log('[socket] connect — id:', socket.id));
+		socket.on('connect', () => {
+			const localId = socket.id!; // assert non-null
+			cursorHues[localId] = Math.floor(Math.random() * 360);
+			console.log('Local hue for', localId, ':', cursorHues[localId]);
+		});
+
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
 		socket.on('disconnect', (reason) => console.warn('[socket] disconnect:', reason));
 
@@ -224,10 +267,13 @@
 			draw();
 		});
 
-		socket.on('mouseMoved', ({ id, x, y }) => {
+		socket.on('mouseMoved', (payload: { id: string; x: number; y: number }) => {
+			const { id, x, y } = payload;
 			mousePositions[id] = { x, y };
-			if (!cursorHues[id]) {
+
+			if (cursorHues[id] === undefined) {
 				cursorHues[id] = Math.floor(Math.random() * 360);
+				console.log('Assigned hue for', id, ':', cursorHues[id]);
 			}
 		});
 
