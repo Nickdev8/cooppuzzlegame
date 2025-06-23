@@ -456,16 +456,18 @@
       </div>
       
       <div class="code-input-section">
-        <label class="input-label">Your Name:</label>
+        <label class="input-label" for="private-player-name">Your Name:</label>
         <input 
+          id="private-player-name"
           type="text" 
           bind:value={playerName}
           placeholder="Enter your name"
           class="name-input"
           maxlength="20"
         />
-        <label class="input-label">Enter Lobby Code:</label>
+        <label class="input-label" for="private-lobby-code">Enter Lobby Code:</label>
         <input 
+          id="private-lobby-code"
           type="text" 
           bind:value={lobbyCode}
           placeholder="e.g., ABC123"
@@ -488,8 +490,9 @@
       </div>
       
       <div class="name-input-section">
-        <label class="input-label">Your Name:</label>
+        <label class="input-label" for="create-player-name">Your Name:</label>
         <input 
+          id="create-player-name"
           type="text" 
           bind:value={playerName}
           placeholder="Enter your name"
@@ -498,8 +501,8 @@
         />
         
         <div class="privacy-toggle-section">
-          <label class="input-label">Lobby Privacy:</label>
-          <div class="toggle-container">
+          <label class="input-label" for="privacy-toggle">Lobby Privacy:</label>
+          <div class="toggle-container" id="privacy-toggle">
             <button 
               class="toggle-option {!isPrivateLobby ? 'active' : ''}" 
               on:click={() => isPrivateLobby = false}

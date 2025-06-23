@@ -34,6 +34,7 @@ class GameRoom {
     this.anchoredBodies = [];
     this.dragConstraints = new Map(); // socketId -> constraint
     
+    console.log(`[GameRoom] Creating new room for lobbyCode: ${lobbyCode}`);
     this.setupPhysics();
     this.setupScene();
     this.startGameLoop();
@@ -42,7 +43,7 @@ class GameRoom {
   setupPhysics() {
     const { width, height } = this.canvasSize;
     const h = height * 20;
-
+    console.log(`[GameRoom:${this.lobbyCode}] Setting up physics with canvas size`, this.canvasSize);
     this.walls.left = Bodies.rectangle(-WALL_THICKNESS / 2, height / 2, WALL_THICKNESS, h, { isStatic: true });
     this.walls.right = Bodies.rectangle(width + WALL_THICKNESS / 2, height / 2, WALL_THICKNESS, h, { isStatic: true });
     this.walls.bottom = Bodies.rectangle(width / 2, height + WALL_THICKNESS / 2, width + WALL_THICKNESS * 2, WALL_THICKNESS, { isStatic: true });
@@ -51,6 +52,7 @@ class GameRoom {
   }
 
   setupScene() {
+    console.log(`[GameRoom:${this.lobbyCode}] Setting up scene with`, sceneData.length, 'objects');
     for (const cfg of sceneData) {
       let baseX, baseY;
       if (cfg.screen) {
@@ -108,12 +110,14 @@ class GameRoom {
   }
 
   startGameLoop() {
+    console.log(`[GameRoom:${this.lobbyCode}] Starting game loop`);
     this.gameInterval = setInterval(() => {
       Engine.update(this.engine, 1000 / 60);
 
       const floorY = this.canvasSize.height + WALL_THICKNESS / 2;
       for (const b of this.dynamicBodies) {
         if (b.position.y > floorY + RESPAWN_MARGIN) {
+          console.log(`[GameRoom:${this.lobbyCode}] Respawning body`, b.label);
           Body.setPosition(b, { x: 300, y: 100 });
           Body.setVelocity(b, { x: 0, y: 0 });
           Body.setAngularVelocity(b, 0);
@@ -122,7 +126,7 @@ class GameRoom {
       }
 
       // Send state to all players in this room
-      io.to(this.lobbyCode).emit('state', {
+      const state = {
         bodies: this.bodies.map(({ body, renderHint }) => ({
           id: body.label,
           x: body.position.x,
@@ -133,13 +137,17 @@ class GameRoom {
           height: renderHint.height
         })),
         anchors: this.anchoredBodies.map(({ C }) => C.pointA)
-      });
+      };
+      if (this.players.size > 0) {
+        console.log(`[GameRoom:${this.lobbyCode}] Emitting state to ${this.players.size} players. Bodies: ${state.bodies.length}, Anchors: ${state.anchors.length}`);
+      }
+      io.to(this.lobbyCode).emit('state', state);
     }, 1000 / 60);
   }
 
   addPlayer(socketId) {
     this.players.add(socketId);
-    console.log(`Player ${socketId} joined game room ${this.lobbyCode}. Total players: ${this.players.size}`);
+    console.log(`[GameRoom:${this.lobbyCode}] Player ${socketId} joined. Total players: ${this.players.size}`);
   }
 
   removePlayer(socketId) {
@@ -149,8 +157,9 @@ class GameRoom {
     if (dragC) {
       World.remove(this.world, dragC);
       this.dragConstraints.delete(socketId);
+      console.log(`[GameRoom:${this.lobbyCode}] Removed drag constraint for player ${socketId}`);
     }
-    console.log(`Player ${socketId} left game room ${this.lobbyCode}. Total players: ${this.players.size}`);
+    console.log(`[GameRoom:${this.lobbyCode}] Player ${socketId} left. Total players: ${this.players.size}`);
     
     // If no players left, clean up the room
     if (this.players.size === 0) {
@@ -174,6 +183,7 @@ class GameRoom {
     });
     World.add(this.world, dragC);
     this.dragConstraints.set(socketId, dragC);
+    console.log(`[GameRoom:${this.lobbyCode}] Player ${socketId} started dragging ${id}`);
   }
 
   handleDrag(socketId, { x, y }) {
@@ -181,6 +191,7 @@ class GameRoom {
     if (dragC) {
       dragC.pointA.x = x;
       dragC.pointA.y = y;
+      // Optionally log drag updates, but can be noisy
     }
   }
 
@@ -189,11 +200,12 @@ class GameRoom {
     if (dragC) {
       World.remove(this.world, dragC);
       this.dragConstraints.delete(socketId);
+      console.log(`[GameRoom:${this.lobbyCode}] Player ${socketId} ended drag`);
     }
   }
 
   cleanup() {
-    console.log(`Cleaning up game room ${this.lobbyCode}`);
+    console.log(`[GameRoom:${this.lobbyCode}] Cleaning up game room`);
     if (this.gameInterval) {
       clearInterval(this.gameInterval);
     }
@@ -207,9 +219,10 @@ const gameRooms = new Map(); // lobbyCode -> GameRoom
 // ─── SOCKET.IO HANDLERS ───────────────────────────────────────────────────
 io.on('connection', socket => {
   let currentRoom = null;
+  console.log(`[Socket] New connection: ${socket.id}`);
 
   socket.on('joinGame', ({ lobbyCode }) => {
-    console.log(`Socket ${socket.id} joining game for lobby ${lobbyCode}`);
+    console.log(`[Socket:${socket.id}] joinGame for lobby ${lobbyCode}`);
     
     // Leave previous room if any
     if (currentRoom) {
@@ -236,7 +249,7 @@ io.on('connection', socket => {
   });
 
   socket.on('disconnect', () => {
-    console.log(`Socket ${socket.id} disconnected`);
+    console.log(`[Socket] Disconnected: ${socket.id}`);
     if (currentRoom) {
       const room = gameRooms.get(currentRoom);
       if (room) {
@@ -247,6 +260,7 @@ io.on('connection', socket => {
   });
 
   socket.on('startDrag', (data) => {
+    console.log(`[Socket:${socket.id}] startDrag`, data);
     if (currentRoom) {
       const room = gameRooms.get(currentRoom);
       if (room) {
@@ -256,6 +270,8 @@ io.on('connection', socket => {
   });
 
   socket.on('drag', (data) => {
+    // Optionally log drag events
+    // console.log(`[Socket:${socket.id}] drag`, data);
     if (currentRoom) {
       const room = gameRooms.get(currentRoom);
       if (room) {
@@ -265,6 +281,7 @@ io.on('connection', socket => {
   });
 
   socket.on('endDrag', () => {
+    console.log(`[Socket:${socket.id}] endDrag`);
     if (currentRoom) {
       const room = gameRooms.get(currentRoom);
       if (room) {
@@ -274,6 +291,8 @@ io.on('connection', socket => {
   });
 
   socket.on('movemouse', pos => {
+    // Optionally log mouse move events
+    // console.log(`[Socket:${socket.id}] movemouse`, pos);
     socket.to(currentRoom).emit('mouseMoved', {
       id: socket.id,
       x: pos.x,
@@ -282,6 +301,7 @@ io.on('connection', socket => {
   });
 
   socket.on('mouseLeave', () => {
+    console.log(`[Socket:${socket.id}] mouseLeave`);
     socket.to(currentRoom).emit('mouseRemoved', { id: socket.id });
   });
 });

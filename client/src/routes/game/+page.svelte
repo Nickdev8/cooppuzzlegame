@@ -74,7 +74,7 @@
 		const x = (e.clientX - rect.left) * scaleX;
 		const y = (e.clientY - rect.top) * scaleY;
 
-		log('handleWindowMousemove', { x, y, dragging });
+		// log('handleWindowMousemove', { x, y, dragging });
 		try {
 			if (x >= 0 && y >= 0 && x <= canvas.width && y <= canvas.height) {
 				socket.emit('movemouse', { x, y });
@@ -90,7 +90,7 @@
 	}
 
 	function handleWindowMouseleave(): void {
-		log('handleWindowMouseleave');
+		// log('handleWindowMouseleave');
 		socket.emit('mouseLeave');
 	}
 
