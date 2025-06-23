@@ -67,24 +67,17 @@
 
 	function createBulletJournalGrid() {
 		gridPoints = [];
-		const spacing = 80;
-		const margin = 150;
+		const spacing = 60;
+		const margin = -150;
 		
 		for (let x = margin; x < canvasWidth - margin; x += spacing) {
 			for (let y = margin; y < canvasHeight - margin; y += spacing) {
-				// Skip points where buttons and light bulb are
-				const skipButton1 = Math.abs(x - button1.x) < 100 && Math.abs(y - button1.y) < 100;
-				const skipButton2 = Math.abs(x - button2.x) < 100 && Math.abs(y - button2.y) < 100;
-				const skipLightBulb = Math.abs(x - lightBulb.x) < 100 && Math.abs(y - lightBulb.y) < 100;
-				
-				if (!skipButton1 && !skipButton2 && !skipLightBulb) {
 					gridPoints.push({
-						x: x + (Math.random() - 0.5) * 20, // Add some randomness
-						y: y + (Math.random() - 0.5) * 20,
-						radius: 3 + Math.random() * 2,
+						x: x + (Math.random() - 0.5) * 5, // Add some randomness
+						y: y + (Math.random() - 0.5) * 5,
+						radius: 3 + Math.random() * 1,
 						isActive: false
 					});
-				}
 			}
 		}
 	}
@@ -205,7 +198,7 @@
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
 		// Draw black bars for aspect ratio
-		ctx.fillStyle = '#000000';
+		ctx.fillStyle = '#eee';
 		if (offsetX > 0) {
 			ctx.fillRect(0, 0, offsetX, canvas.height);
 			ctx.fillRect(canvas.width - offsetX, 0, offsetX, canvas.height);
@@ -220,17 +213,6 @@
 
 		// Draw grid points
 		drawGridPoints();
-
-		// Draw title
-		ctx.save();
-		ctx.fillStyle = '#2c3e50';
-		ctx.font = 'bold 48px "Comic Neue", cursive';
-		ctx.textAlign = 'center';
-		ctx.fillText('Collaborative Puzzle', canvasWidth / 2, 120);
-		ctx.font = '24px "Comic Neue", cursive';
-		ctx.fillStyle = '#7f8c8d';
-		ctx.fillText('Press both buttons together to light the bulb', canvasWidth / 2, 160);
-		ctx.restore();
 
 		// Draw button 1
 		drawButton(button1, button1Pressed, 'Button 1');
