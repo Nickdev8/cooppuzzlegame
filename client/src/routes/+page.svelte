@@ -28,7 +28,11 @@
   
   onMount(() => {
     // Connect to lobby server
-    socket = io('http://localhost:3081');
+    const lobbyUrl = window.location.hostname === 'localhost' 
+      ? 'http://localhost:3081' 
+      : `${window.location.protocol}//${window.location.host}/lobby-socket.io`;
+    
+    socket = io(lobbyUrl);
     
     socket.on('connect', () => {
       console.log('Connected to lobby server');
