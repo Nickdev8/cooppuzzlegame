@@ -8,7 +8,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
-// ─── LOBBY MANAGEMENT ─────────────────────────────────────────────────────
+// ─── LOBBY MANAGEMENT ────────────────────────────────────────────────────
 class Lobby {
   constructor(code, hostId, hostName = 'Host') {
     this.code = code;
