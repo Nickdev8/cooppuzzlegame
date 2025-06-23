@@ -3,6 +3,7 @@
 	import io, { Socket } from 'socket.io-client';
 
 	let anchors: { x: number; y: number }[] = [];
+	let lobbyCode: string | null = null;
 
 	interface BodyState {
 		id: string;
@@ -226,12 +227,47 @@
 			return;
 		}
 		ctx = canvas.getContext('2d')!;
-		socket = io(location.origin, { transports: ['websocket'], timeout: 10000 });
+		
+		// Extract lobby code from URL
+		const urlParams = new URLSearchParams(window.location.search);
+		const lobbyCodeParam = urlParams.get('lobby');
+		
+		if (!lobbyCodeParam) {
+			console.error('[onMount] No lobby code found in URL!');
+			alert('No lobby code found. Please join a lobby first.');
+			window.location.href = '/';
+			return;
+		}
+		
+		// Set lobby code and update page title
+		lobbyCode = lobbyCodeParam;
+		document.title = `Coop Puzzle Game - Lobby ${lobbyCode}`;
+		
+		console.log('[onMount] Joining game for lobby:', lobbyCode);
+		
+		// Connect to game server
+		const gameUrl = window.location.hostname === 'localhost' 
+			? 'http://localhost:3080' 
+			: `${window.location.protocol}//${window.location.host}`;
+		
+		const gameOptions = window.location.hostname === 'localhost' 
+			? {} 
+			: { path: '/game-socket.io/' };
+		
+		socket = io(gameUrl, { 
+			transports: ['websocket'], 
+			timeout: 10000,
+			...gameOptions
+		});
 
 		socket.on('connect', () => {
 			const localId = socket.id!; // assert non-null
 			cursorHues[localId] = Math.floor(Math.random() * 360);
 			console.log('Local hue for', localId, ':', cursorHues[localId]);
+			
+			// Join the specific game room for this lobby
+			socket.emit('joinGame', { lobbyCode });
+			console.log('Joined game room for lobby:', lobbyCode);
 		});
 
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
@@ -290,6 +326,16 @@
 		on:mousedown={handleCanvasMousedown}
 		on:mousemove={handleCanvasMousemove}
 	></canvas>
+	
+	{#if lobbyCode}
+		<div class="lobby-indicator">
+			<span class="lobby-text">Lobby: {lobbyCode}</span>
+		</div>
+		
+		<button class="back-to-lobby-btn" on:click={() => window.location.href = '/'}>
+			← Back to Lobby
+		</button>
+	{/if}
 </div>
 
 <style>
@@ -306,5 +352,47 @@
 		width: 100vw;
 		position: relative;
 		overflow: hidden;
+	}
+	
+	.lobby-indicator {
+		position: absolute;
+		top: 20px;
+		left: 20px;
+		background: rgba(0, 0, 0, 0.7);
+		color: white;
+		padding: 10px 15px;
+		border-radius: 8px;
+		font-family: 'Comic Neue', cursive;
+		font-size: 14px;
+		font-weight: 600;
+		z-index: 1000;
+		backdrop-filter: blur(5px);
+	}
+	
+	.lobby-text {
+		opacity: 0.9;
+	}
+	
+	.back-to-lobby-btn {
+		position: absolute;
+		top: 20px;
+		right: 20px;
+		background: rgba(0, 0, 0, 0.7);
+		color: white;
+		border: none;
+		padding: 10px 15px;
+		border-radius: 8px;
+		font-family: 'Comic Neue', cursive;
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+		z-index: 1000;
+		backdrop-filter: blur(5px);
+		transition: all 0.3s ease;
+	}
+	
+	.back-to-lobby-btn:hover {
+		background: rgba(0, 0, 0, 0.8);
+		transform: translateY(-1px);
 	}
 </style>
