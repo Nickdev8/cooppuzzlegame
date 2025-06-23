@@ -733,6 +733,9 @@
           <button class="start-game-btn" on:click={handleStartGame} disabled={!isHost || (currentLobby?.players?.length || 0) < 2}>
             🎮 Start Game
           </button>
+          <button class="physics-btn" on:click={() => window.location.href = `/physics?lobby=${currentLobby?.code}`}>
+            ⚡ Physics Engine
+          </button>
         </div>
       </div>
     </div>
@@ -1267,6 +1270,24 @@
   .start-game-btn:disabled {
     background: #ccc;
     cursor: not-allowed;
+  }
+  
+  .physics-btn {
+    background: #9b59b6;
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    margin-top: 10px;
+  }
+  
+  .physics-btn:hover {
+    background: #8e44ad;
+    transform: scale(1.05);
   }
   
   .decorative-elements {

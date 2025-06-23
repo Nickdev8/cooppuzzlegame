@@ -194,6 +194,9 @@ class GameRoom {
   addPlayer(socketId, playerInfo) {
     this.players.set(socketId, playerInfo);
     console.log(`[GameRoom:${this.lobbyCode}] Player ${playerInfo.name} (${socketId}) joined. Total: ${this.players.size}`);
+    
+    // Broadcast updated player list to all players in the room
+    this.broadcastPlayerList();
   }
 
   removePlayer(socketId) {
@@ -204,6 +207,9 @@ class GameRoom {
     this.removeDragConstraint(socketId);
     
     console.log(`[GameRoom:${this.lobbyCode}] Player ${playerInfo?.name || socketId} left. Total: ${this.players.size}`);
+    
+    // Broadcast updated player list to remaining players
+    this.broadcastPlayerList();
     
     // Cleanup if no players left
     if (this.players.size === 0) {
@@ -267,6 +273,27 @@ class GameRoom {
     
     gameRooms.delete(this.lobbyCode);
   }
+
+  broadcastPlayerList() {
+    const playerList = Array.from(this.players.entries()).map(([socketId, playerInfo]) => ({
+      id: socketId,
+      name: playerInfo.name,
+      x: 0, // Will be updated with mouse position
+      y: 0,
+      hue: this.getPlayerHue(socketId)
+    }));
+    
+    io.to(this.lobbyCode).emit('players', playerList);
+  }
+
+  getPlayerHue(socketId) {
+    // Generate consistent hue based on socket ID
+    let hash = 0;
+    for (let i = 0; i < socketId.length; i++) {
+      hash = (hash * 31 + socketId.charCodeAt(i)) | 0;
+    }
+    return (hash >>> 0) % 360;
+  }
 }
 
 // ─── GAME ROOM MANAGEMENT ───────────────────────────────────────────────
@@ -315,7 +342,14 @@ io.on('connection', (socket) => {
     
     // Get or create game room
     currentGameRoom = getOrCreateGameRoom(lobbyCode);
-    currentGameRoom.addPlayer(socket.id, playerInfo);
+    
+    // Use provided player info or generate default
+    const playerData = playerInfo || {
+      name: `Player ${socket.id.slice(-4)}`,
+      id: socket.id
+    };
+    
+    currentGameRoom.addPlayer(socket.id, playerData);
     
     console.log(`[Socket:${socket.id}] Successfully joined game room for lobby: ${lobbyCode}`);
   });
