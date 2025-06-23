@@ -27,13 +27,13 @@ A cooperative puzzle game with a beautiful bullet journal-style lobby system.
 ## Getting Started
 
 1. Install dependencies:
-   ```bash
+```bash
    npm install
    ```
 
 2. Start the development server:
-   ```bash
-   npm run dev
+```bash
+npm run dev
    ```
 
 3. Open your browser to `http://localhost:5173`
