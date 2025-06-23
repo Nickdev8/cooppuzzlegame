@@ -50,6 +50,26 @@ class Lobby {
     return false;
   }
 
+  transferHost(newHostId) {
+    // Find the new host player
+    const newHostPlayer = this.players.find(p => p.id === newHostId);
+    if (!newHostPlayer) {
+      return false;
+    }
+    
+    // Remove host from current host
+    const currentHost = this.players.find(p => p.isHost);
+    if (currentHost) {
+      currentHost.isHost = false;
+    }
+    
+    // Set new host
+    newHostPlayer.isHost = true;
+    this.hostId = newHostId;
+    
+    return true;
+  }
+
   getPublicInfo() {
     return {
       code: this.code,
@@ -216,6 +236,31 @@ io.on('connection', (socket) => {
       lobbyCode: lobbyCode,
       players: lobby.players
     });
+  });
+  
+  socket.on('transferHost', ({ targetPlayerId }) => {
+    const lobbyCode = playerLobbies.get(socket.id);
+    if (!lobbyCode) {
+      socket.emit('error', 'Not in a lobby');
+      return;
+    }
+    
+    const lobby = lobbies.get(lobbyCode);
+    if (!lobby || lobby.hostId !== socket.id) {
+      socket.emit('error', 'Only the host can transfer host privileges');
+      return;
+    }
+    
+    const success = lobby.transferHost(targetPlayerId);
+    if (success) {
+      // Notify all players in the lobby about the host transfer
+      io.to(lobbyCode).emit('hostTransferred', {
+        newHostId: targetPlayerId,
+        players: lobby.players
+      });
+    } else {
+      socket.emit('error', 'Failed to transfer host privileges');
+    }
   });
   
   socket.on('disconnect', () => {

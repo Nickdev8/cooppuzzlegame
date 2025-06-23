@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import io, { Socket } from 'socket.io-client';
   
-  let currentView = 'main'; // main, join, create, lobby
+  let currentView = 'main'; // main, join, create, lobby, username
   let joinType = ''; // public, private
   let lobbyCode = '';
   let playerName = '';
@@ -28,6 +28,14 @@
   } | null = null;
   let isHost = false;
   let errorMessage = '';
+  
+  // New state variables for requested features
+  let showUsernameEntry = false;
+  let pendingLobbyCode = '';
+  let showNotHostPopup = false;
+  let showHostTransferPopup = false;
+  let transferTargetPlayer: { id: string; name: string } | null = null;
+  let hoveredPlayerId = '';
   
   console.log('🔧 [DEBUG] Component initialized with initial state:', {
     currentView,
@@ -157,6 +165,15 @@
       window.location.href = `/game?lobby=${lobbyCode}`;
     });
     
+    socket.on('hostTransferred', ({ newHostId, players }) => {
+      console.log('👑 [DEBUG] Host transferred:', { newHostId, players });
+      if (currentLobby) {
+        currentLobby.players = players;
+        isHost = newHostId === socket.id;
+        console.log('👑 [DEBUG] Updated host status, isHost now:', isHost);
+      }
+    });
+    
     socket.on('error', (error) => {
       console.error('🔥 [DEBUG] Socket error received:', error);
       errorMessage = error;
@@ -170,11 +187,46 @@
     console.log('🔧 [DEBUG] All socket event listeners set up');
   });
   
+  // Handle keyboard events for popups
+  let keyboardHandler: ((e: KeyboardEvent) => void) | null = null;
+  
+  $: if (showNotHostPopup || showHostTransferPopup) {
+    // Remove existing handler if any
+    if (keyboardHandler) {
+      document.removeEventListener('keydown', keyboardHandler);
+    }
+    
+    // Add new handler
+    keyboardHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showNotHostPopup) {
+          closeNotHostPopup();
+        } else if (showHostTransferPopup) {
+          cancelHostTransfer();
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', keyboardHandler);
+  } else {
+    // Remove handler when no popups are shown
+    if (keyboardHandler) {
+      document.removeEventListener('keydown', keyboardHandler);
+      keyboardHandler = null;
+    }
+  }
+  
   onDestroy(() => {
     console.log('🛑 [DEBUG] Component destroying, disconnecting socket...');
     if (socket) {
       socket.disconnect();
       console.log('🛑 [DEBUG] Socket disconnected');
+    }
+    
+    // Clean up keyboard handler
+    if (keyboardHandler) {
+      document.removeEventListener('keydown', keyboardHandler);
+      keyboardHandler = null;
     }
   });
   
@@ -204,7 +256,14 @@
   
   function handleBack() {
     console.log('⬅️ [DEBUG] Back button clicked, current view:', currentView);
-    if (currentView === 'join' && joinType) {
+    if (currentView === 'username') {
+      console.log('⬅️ [DEBUG] Going back from username entry');
+      currentView = 'main';
+      showUsernameEntry = false;
+      pendingLobbyCode = '';
+      playerName = '';
+      console.log('⬅️ [DEBUG] Reset username entry state');
+    } else if (currentView === 'join' && joinType) {
       console.log('⬅️ [DEBUG] Going back from join type selection');
       joinType = '';
       console.log('⬅️ [DEBUG] Cleared join type:', joinType);
@@ -234,12 +293,13 @@
   
   function handleJoinLobby(lobbyCode: string) {
     console.log('🎯 [DEBUG] Joining lobby with code:', lobbyCode);
-    console.log('🎯 [DEBUG] Current player name:', playerName);
     
     if (!playerName.trim()) {
-      const generatedName = `Player${Math.floor(Math.random() * 1000)}`;
-      console.log('🎯 [DEBUG] Generated player name:', generatedName);
-      playerName = generatedName;
+      // Show username entry screen
+      showUsernameEntry = true;
+      pendingLobbyCode = lobbyCode;
+      currentView = 'username';
+      return;
     }
     
     const joinData = { code: lobbyCode, playerName: playerName.trim() };
@@ -254,9 +314,11 @@
     
     if (lobbyCode.trim()) {
       if (!playerName.trim()) {
-        const generatedName = `Player${Math.floor(Math.random() * 1000)}`;
-        console.log('🔑 [DEBUG] Generated player name:', generatedName);
-        playerName = generatedName;
+        // Show username entry screen
+        showUsernameEntry = true;
+        pendingLobbyCode = lobbyCode.trim().toUpperCase();
+        currentView = 'username';
+        return;
       }
       
       const joinData = { 
@@ -275,9 +337,11 @@
     console.log('✨ [DEBUG] Player name input:', playerName);
     
     if (!playerName.trim()) {
-      const generatedName = `Player${Math.floor(Math.random() * 1000)}`;
-      console.log('✨ [DEBUG] Generated player name:', generatedName);
-      playerName = generatedName;
+      // Show username entry screen for creating lobby
+      showUsernameEntry = true;
+      pendingLobbyCode = '';
+      currentView = 'username';
+      return;
     }
     
     const createData = { playerName: playerName.trim(), isPrivate: isPrivateLobby };
@@ -290,12 +354,55 @@
     console.log('🎮 [DEBUG] Is host:', isHost);
     console.log('🎮 [DEBUG] Current lobby:', currentLobby);
     
+    if (!isHost) {
+      showNotHostPopup = true;
+      return;
+    }
+    
     if (socket && isHost) {
       console.log('🎮 [DEBUG] Emitting startGame event');
       socket.emit('startGame');
     } else {
       console.warn('⚠️ [DEBUG] Cannot start game - not host or no socket');
     }
+  }
+  
+  function handleUsernameSubmit() {
+    if (playerName.trim()) {
+      showUsernameEntry = false;
+      if (pendingLobbyCode) {
+        // Joining an existing lobby
+        const joinData = { code: pendingLobbyCode, playerName: playerName.trim() };
+        socket.emit('joinLobby', joinData);
+        pendingLobbyCode = '';
+      } else {
+        // Creating a new lobby
+        const createData = { playerName: playerName.trim(), isPrivate: isPrivateLobby };
+        socket.emit('createLobby', createData);
+      }
+    }
+  }
+  
+  function handleHostTransfer(player: { id: string; name: string }) {
+    transferTargetPlayer = player;
+    showHostTransferPopup = true;
+  }
+  
+  function confirmHostTransfer() {
+    if (transferTargetPlayer && socket) {
+      socket.emit('transferHost', { targetPlayerId: transferTargetPlayer.id });
+      showHostTransferPopup = false;
+      transferTargetPlayer = null;
+    }
+  }
+  
+  function cancelHostTransfer() {
+    showHostTransferPopup = false;
+    transferTargetPlayer = null;
+  }
+  
+  function closeNotHostPopup() {
+    showNotHostPopup = false;
   }
   
   function copyLobbyCode() {
@@ -388,6 +495,43 @@
         <div class="doodle doodle-4">💡</div>
         <div class="doodle doodle-5">🎨</div>
         <div class="doodle doodle-6">📝</div>
+      </div>
+    </div>
+  {/if}
+  
+  <!-- Username Entry -->
+  {#if currentView === 'username'}
+    <div class="journal-page username-entry">
+      <div class="page-header">
+        <button class="back-button" on:click={handleBack}>← Back</button>
+        <h2 class="title">Enter Your Name</h2>
+        <div class="subtitle">
+          {#if pendingLobbyCode}
+            Joining lobby {pendingLobbyCode}
+          {:else}
+            Creating a new lobby
+          {/if}
+        </div>
+      </div>
+      
+      <div class="username-input-section">
+        <label class="input-label" for="username-input">Your Name:</label>
+        <input 
+          id="username-input"
+          type="text" 
+          bind:value={playerName}
+          placeholder="Enter your name"
+          class="name-input"
+          maxlength="20"
+          on:keydown={(e) => e.key === 'Enter' && handleUsernameSubmit()}
+        />
+        <button class="username-submit-btn" on:click={handleUsernameSubmit} disabled={!playerName.trim()}>
+          {#if pendingLobbyCode}
+            Join Lobby
+          {:else}
+            Create Lobby
+          {/if}
+        </button>
       </div>
     </div>
   {/if}
@@ -531,7 +675,7 @@
   
   <!-- Lobby Room -->
   {#if currentView === 'lobby' && currentLobby}
-    <div class="journal-page lobby-room">
+    <div class="journal-page lobby-room dotted-background">
       <div class="page-header">
         <button class="back-button" on:click={handleBack}>← Back</button>
         <h2 class="title">Your Lobby</h2>
@@ -554,11 +698,30 @@
           <div class="players-list">
             {#if currentLobby?.players}
               {#each currentLobby.players as player}
-                <div class="player-item">
+                <div 
+                  class="player-item {isHost && !player.isHost ? 'transferable' : ''}"
+                  role="button"
+                  tabindex="0"
+                  aria-label="{isHost && !player.isHost ? `Transfer host to ${player.name}` : `Player ${player.name}`}"
+                  on:click={() => isHost && !player.isHost && handleHostTransfer(player)}
+                  on:keydown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      if (isHost && !player.isHost) {
+                        handleHostTransfer(player);
+                      }
+                    }
+                  }}
+                  on:mouseenter={() => isHost && !player.isHost && (hoveredPlayerId = player.id)}
+                  on:mouseleave={() => hoveredPlayerId = ''}
+                >
                   <span class="player-icon">👤</span>
                   <span class="player-name">{player.name}</span>
                   {#if player.isHost}
-                    <span class="host-badge">Host</span>
+                    <span class="host-badge">👑 Host</span>
+                  {/if}
+                  {#if isHost && !player.isHost && hoveredPlayerId === player.id}
+                    <div class="transfer-tooltip">Transfer Host</div>
                   {/if}
                 </div>
               {/each}
@@ -579,6 +742,62 @@
   {#if errorMessage}
     <div class="error-toast">
       <span class="error-text">⚠️ {errorMessage}</span>
+    </div>
+  {/if}
+  
+  <!-- Not Host Popup -->
+  {#if showNotHostPopup}
+    <div 
+      class="popup-overlay" 
+      role="dialog"
+      tabindex="-1"
+      aria-labelledby="not-host-title"
+      aria-describedby="not-host-description"
+      on:click={closeNotHostPopup}
+    >
+      <div 
+        class="popup-content" 
+        on:click|stopPropagation
+      >
+        <div class="popup-header">
+          <h3 id="not-host-title">⚠️ Not the Host</h3>
+        </div>
+        <div class="popup-body">
+          <p id="not-host-description">Only the host can start the game. Ask the host to start the game or transfer host privileges to you.</p>
+        </div>
+        <div class="popup-actions">
+          <button class="popup-btn cancel-btn" on:click={closeNotHostPopup}>OK</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+  
+  <!-- Host Transfer Confirmation Popup -->
+  {#if showHostTransferPopup && transferTargetPlayer}
+    <div 
+      class="popup-overlay" 
+      role="dialog"
+      tabindex="-1"
+      aria-labelledby="transfer-host-title"
+      aria-describedby="transfer-host-description"
+      on:click={cancelHostTransfer}
+    >
+      <div 
+        class="popup-content" 
+        on:click|stopPropagation
+      >
+        <div class="popup-header">
+          <h3 id="transfer-host-title">👑 Transfer Host</h3>
+        </div>
+        <div class="popup-body">
+          <p id="transfer-host-description">Are you sure you want to transfer host privileges to <strong>{transferTargetPlayer.name}</strong>?</p>
+          <p class="warning-text">This action cannot be undone.</p>
+        </div>
+        <div class="popup-actions">
+          <button class="popup-btn cancel-btn" on:click={cancelHostTransfer}>Cancel</button>
+          <button class="popup-btn confirm-btn" on:click={confirmHostTransfer}>Continue</button>
+        </div>
+      </div>
     </div>
   {/if}
 </div>
@@ -1306,5 +1525,195 @@
     background: #fff3e0;
     color: #f57c00;
     border: 2px solid #ffcc02;
+  }
+  
+  /* Dotted background for lobby */
+  .dotted-background {
+    background-image: radial-gradient(circle, #ddd 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-position: 0 0, 10px 10px;
+  }
+  
+  /* Username entry styles */
+  .username-input-section {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+  }
+  
+  .username-submit-btn {
+    background: #4ecdc4;
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+  }
+  
+  .username-submit-btn:hover:not(:disabled) {
+    background: #3db8b0;
+    transform: scale(1.05);
+  }
+  
+  .username-submit-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
+  
+  /* Popup styles */
+  .popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease;
+  }
+  
+  .popup-content {
+    background: white;
+    border-radius: 15px;
+    padding: 30px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    animation: slideUp 0.3s ease;
+  }
+  
+  .popup-header {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  
+  .popup-header h3 {
+    font-size: 1.5rem;
+    color: #333;
+    margin: 0;
+  }
+  
+  .popup-body {
+    margin-bottom: 25px;
+    text-align: center;
+  }
+  
+  .popup-body p {
+    margin: 0 0 15px 0;
+    color: #666;
+    line-height: 1.5;
+  }
+  
+  .warning-text {
+    color: #ff6b6b !important;
+    font-weight: 600;
+  }
+  
+  .popup-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+  }
+  
+  .popup-btn {
+    padding: 12px 25px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    font-family: 'Comic Neue', cursive;
+  }
+  
+  .popup-btn.cancel-btn {
+    background: #f0f0f0;
+    color: #666;
+  }
+  
+  .popup-btn.cancel-btn:hover {
+    background: #e0e0e0;
+  }
+  
+  .popup-btn.confirm-btn {
+    background: #ff6b6b;
+    color: white;
+  }
+  
+  .popup-btn.confirm-btn:hover {
+    background: #e55a5a;
+  }
+  
+  /* Host transfer styles */
+  .player-item.transferable {
+    cursor: pointer;
+    position: relative;
+    transition: all 0.3s ease;
+  }
+  
+  .player-item.transferable:hover {
+    background: #f0f9f8;
+    border-color: #4ecdc4;
+    transform: translateY(-2px);
+  }
+  
+  .player-item.transferable:focus {
+    outline: 2px solid #4ecdc4;
+    outline-offset: 2px;
+    background: #f0f9f8;
+    border-color: #4ecdc4;
+  }
+  
+  .player-item[role="button"]:focus {
+    outline: 2px solid #4ecdc4;
+    outline-offset: 2px;
+  }
+  
+  .transfer-tooltip {
+    position: absolute;
+    right: -120px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #333;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    z-index: 10;
+    animation: fadeIn 0.2s ease;
+  }
+  
+  .transfer-tooltip::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 5px solid transparent;
+    border-right-color: #333;
+  }
+  
+  /* Animations */
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 </style>
