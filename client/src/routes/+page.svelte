@@ -6,6 +6,7 @@
   let joinType = ''; // public, private
   let lobbyCode = '';
   let playerName = '';
+  let isPrivateLobby = false; // Add this for the toggle
   let socket: Socket;
   let publicLobbies: Array<{
     code: string;
@@ -17,11 +18,13 @@
     code: string;
     players: Array<{ id: string; name: string; isHost: boolean }>;
     maxPlayers: number;
+    isPrivate: boolean;
   } | null = null;
   let currentLobby: {
     code: string;
     players: Array<{ id: string; name: string; isHost: boolean }>;
     maxPlayers: number;
+    isPrivate: boolean;
   } | null = null;
   let isHost = false;
   let errorMessage = '';
@@ -112,7 +115,13 @@
       console.log('👤 [DEBUG] Player joined:', { id, name, playerCount });
       if (currentLobby) {
         console.log('👤 [DEBUG] Current lobby before adding player:', currentLobby);
-        currentLobby.players.push({ id, name, isHost: false });
+        // Check if player already exists to avoid duplicates
+        const existingPlayer = currentLobby.players.find(p => p.id === id);
+        if (!existingPlayer) {
+          currentLobby.players.push({ id, name, isHost: false });
+          // Force reactivity by creating a new array reference
+          currentLobby.players = [...currentLobby.players];
+        }
         console.log('👤 [DEBUG] Current lobby after adding player:', currentLobby);
       } else {
         console.warn('⚠️ [DEBUG] No current lobby when player joined');
@@ -125,9 +134,16 @@
         console.log('👋 [DEBUG] Current lobby before removing player:', currentLobby);
         currentLobby.players = currentLobby.players.filter(p => p.id !== id);
         if (newHost) {
+          // Update host status for all players
+          currentLobby.players = currentLobby.players.map(p => ({
+            ...p,
+            isHost: p.id === newHost
+          }));
           isHost = newHost === socket.id;
           console.log('👑 [DEBUG] Host changed, isHost now:', isHost);
         }
+        // Force reactivity by creating a new array reference
+        currentLobby.players = [...currentLobby.players];
         console.log('👋 [DEBUG] Current lobby after removing player:', currentLobby);
       } else {
         console.warn('⚠️ [DEBUG] No current lobby when player left');
@@ -264,7 +280,7 @@
       playerName = generatedName;
     }
     
-    const createData = { playerName: playerName.trim(), isPrivate: false };
+    const createData = { playerName: playerName.trim(), isPrivate: isPrivateLobby };
     console.log('✨ [DEBUG] Emitting createLobby with data:', createData);
     socket.emit('createLobby', createData);
   }
@@ -333,6 +349,10 @@
   
   $: {
     console.log('🔄 [DEBUG] Reactive update - errorMessage changed to:', errorMessage);
+  }
+  
+  $: {
+    console.log('🔄 [DEBUG] Reactive update - isPrivateLobby changed to:', isPrivateLobby);
   }
 </script>
 
@@ -476,8 +496,31 @@
           class="name-input"
           maxlength="20"
         />
+        
+        <div class="privacy-toggle-section">
+          <label class="input-label">Lobby Privacy:</label>
+          <div class="toggle-container">
+            <button 
+              class="toggle-option {!isPrivateLobby ? 'active' : ''}" 
+              on:click={() => isPrivateLobby = false}
+            >
+              <span class="toggle-icon">🌐</span>
+              <span class="toggle-text">Public</span>
+              <span class="toggle-subtitle">Anyone can join</span>
+            </button>
+            <button 
+              class="toggle-option {isPrivateLobby ? 'active' : ''}" 
+              on:click={() => isPrivateLobby = true}
+            >
+              <span class="toggle-icon">🔒</span>
+              <span class="toggle-text">Private</span>
+              <span class="toggle-subtitle">Code required</span>
+            </button>
+          </div>
+        </div>
+        
         <button class="create-lobby-btn" on:click={handleCreateLobby} disabled={!playerName.trim()}>
-          ✨ Create Lobby
+          ✨ Create {isPrivateLobby ? 'Private' : 'Public'} Lobby
         </button>
       </div>
     </div>
@@ -495,6 +538,11 @@
         <div class="lobby-code-section">
           <h3>Lobby Code</h3>
           <div class="code-display">{currentLobby?.code}</div>
+          <div class="lobby-privacy">
+            <span class="privacy-badge {currentLobby?.isPrivate ? 'private' : 'public'}">
+              {currentLobby?.isPrivate ? '🔒 Private' : '🌐 Public'}
+            </span>
+          </div>
           <button class="copy-btn" on:click={copyLobbyCode}>📋 Copy</button>
         </div>
         
@@ -1118,6 +1166,92 @@
     cursor: not-allowed;
   }
   
+  .privacy-toggle-section {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: center;
+    width: 100%;
+  }
+  
+  .toggle-container {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    max-width: 300px;
+  }
+  
+  .toggle-option {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 15px 10px;
+    border: 3px solid #ddd;
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Comic Neue', cursive;
+    position: relative;
+    overflow: hidden;
+    /* Add hand-drawn effect */
+    box-shadow: 
+      2px 2px 0 rgba(0,0,0,0.1),
+      0 0 0 1px rgba(0,0,0,0.05);
+  }
+  
+  .toggle-option::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    transition: left 0.5s;
+  }
+  
+  .toggle-option:hover::before {
+    left: 100%;
+  }
+  
+  .toggle-option:hover {
+    transform: translateY(-2px);
+    box-shadow: 
+      4px 4px 0 rgba(0,0,0,0.1),
+      0 0 0 1px rgba(0,0,0,0.05),
+      0 6px 20px rgba(0,0,0,0.1);
+  }
+  
+  .toggle-option.active {
+    border-color: #4ecdc4;
+    background: #f0f9f8;
+    color: #4ecdc4;
+    font-weight: 600;
+  }
+  
+  .toggle-option.active:hover {
+    background: #4ecdc4;
+    color: white;
+  }
+  
+  .toggle-icon {
+    font-size: 1.5rem;
+  }
+  
+  .toggle-text {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  
+  .toggle-subtitle {
+    font-size: 0.8rem;
+    opacity: 0.8;
+    text-align: center;
+  }
+  
   .error-toast {
     position: fixed;
     top: 20px;
@@ -1144,5 +1278,30 @@
       transform: translateX(0);
       opacity: 1;
     }
+  }
+  
+  .lobby-privacy {
+    margin-bottom: 15px;
+  }
+  
+  .privacy-badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: 'Comic Neue', cursive;
+  }
+  
+  .privacy-badge.public {
+    background: #e3f2fd;
+    color: #1976d2;
+    border: 2px solid #bbdefb;
+  }
+  
+  .privacy-badge.private {
+    background: #fff3e0;
+    color: #f57c00;
+    border: 2px solid #ffcc02;
   }
 </style>

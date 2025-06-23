@@ -140,6 +140,11 @@ function leaveLobby(playerId) {
   if (lobby.players.length === 0) {
     lobbies.delete(lobbyCode);
     publicLobbies.delete(lobbyCode);
+  } else {
+    // If lobby still exists but is now private, remove from public lobbies
+    if (lobby.isPrivate && publicLobbies.has(lobbyCode)) {
+      publicLobbies.delete(lobbyCode);
+    }
   }
   
   return lobbyCode;
