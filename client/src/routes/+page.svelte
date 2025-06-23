@@ -26,7 +26,21 @@
   let isHost = false;
   let errorMessage = '';
   
+  console.log('🔧 [DEBUG] Component initialized with initial state:', {
+    currentView,
+    joinType,
+    lobbyCode,
+    playerName,
+    publicLobbies: publicLobbies.length,
+    createdLobby,
+    currentLobby,
+    isHost,
+    errorMessage
+  });
+  
   onMount(() => {
+    console.log('🚀 [DEBUG] Component mounted, setting up socket connection...');
+    
     // Connect to lobby server
     const lobbyUrl = window.location.hostname === 'localhost' 
       ? 'http://localhost:3081' 
@@ -36,144 +50,289 @@
       ? {} 
       : { path: '/lobby-socket.io/' };
     
+    console.log('🔌 [DEBUG] Connecting to lobby server:', { lobbyUrl, lobbyOptions });
+    
     socket = io(lobbyUrl, lobbyOptions);
     
     socket.on('connect', () => {
-      console.log('Connected to lobby server');
+      console.log('✅ [DEBUG] Connected to lobby server, socket ID:', socket.id);
+    });
+    
+    socket.on('disconnect', () => {
+      console.log('❌ [DEBUG] Disconnected from lobby server');
+    });
+    
+    socket.on('connect_error', (error) => {
+      console.error('🔥 [DEBUG] Socket connection error:', error);
     });
     
     socket.on('publicLobbies', (lobbies) => {
+      console.log('📋 [DEBUG] Received public lobbies:', lobbies);
       publicLobbies = lobbies;
+      console.log('📋 [DEBUG] Updated publicLobbies state:', publicLobbies);
     });
     
     socket.on('lobbyCreated', (lobby) => {
+      console.log('🎉 [DEBUG] Lobby created successfully:', lobby);
       createdLobby = lobby;
       currentLobby = lobby;
       isHost = true;
       currentView = 'lobby';
+      console.log('🎉 [DEBUG] Updated state after lobby creation:', {
+        createdLobby,
+        currentLobby,
+        isHost,
+        currentView
+      });
     });
     
     socket.on('lobbyJoined', (lobby) => {
+      console.log('🎯 [DEBUG] Successfully joined lobby:', lobby);
       currentLobby = lobby;
       isHost = false;
       currentView = 'lobby';
+      console.log('🎯 [DEBUG] Updated state after joining lobby:', {
+        currentLobby,
+        isHost,
+        currentView
+      });
     });
     
     socket.on('joinError', (error) => {
+      console.error('⚠️ [DEBUG] Join error received:', error);
       errorMessage = error;
+      console.log('⚠️ [DEBUG] Set error message:', errorMessage);
       setTimeout(() => {
+        console.log('🧹 [DEBUG] Clearing error message after timeout');
         errorMessage = '';
       }, 3000);
     });
     
     socket.on('playerJoined', ({ id, name, playerCount }) => {
+      console.log('👤 [DEBUG] Player joined:', { id, name, playerCount });
       if (currentLobby) {
+        console.log('👤 [DEBUG] Current lobby before adding player:', currentLobby);
         currentLobby.players.push({ id, name, isHost: false });
+        console.log('👤 [DEBUG] Current lobby after adding player:', currentLobby);
+      } else {
+        console.warn('⚠️ [DEBUG] No current lobby when player joined');
       }
     });
     
     socket.on('playerLeft', ({ id, playerCount, newHost }) => {
+      console.log('👋 [DEBUG] Player left:', { id, playerCount, newHost });
       if (currentLobby) {
+        console.log('👋 [DEBUG] Current lobby before removing player:', currentLobby);
         currentLobby.players = currentLobby.players.filter(p => p.id !== id);
         if (newHost) {
           isHost = newHost === socket.id;
+          console.log('👑 [DEBUG] Host changed, isHost now:', isHost);
         }
+        console.log('👋 [DEBUG] Current lobby after removing player:', currentLobby);
+      } else {
+        console.warn('⚠️ [DEBUG] No current lobby when player left');
       }
     });
     
     socket.on('gameStarting', ({ lobbyCode, players }) => {
+      console.log('🎮 [DEBUG] Game starting:', { lobbyCode, players });
+      console.log('🎮 [DEBUG] Redirecting to game page...');
       // Redirect to game page
       window.location.href = `/game?lobby=${lobbyCode}`;
     });
     
     socket.on('error', (error) => {
+      console.error('🔥 [DEBUG] Socket error received:', error);
       errorMessage = error;
+      console.log('🔥 [DEBUG] Set error message:', errorMessage);
       setTimeout(() => {
+        console.log('🧹 [DEBUG] Clearing error message after timeout');
         errorMessage = '';
       }, 3000);
     });
+    
+    console.log('🔧 [DEBUG] All socket event listeners set up');
   });
   
   onDestroy(() => {
+    console.log('🛑 [DEBUG] Component destroying, disconnecting socket...');
     if (socket) {
       socket.disconnect();
+      console.log('🛑 [DEBUG] Socket disconnected');
     }
   });
   
   function handleJoin() {
+    console.log('🔍 [DEBUG] Join button clicked');
     currentView = 'join';
+    console.log('🔍 [DEBUG] Changed view to join:', currentView);
   }
   
   function handleCreate() {
+    console.log('✨ [DEBUG] Create button clicked');
     currentView = 'create';
+    console.log('✨ [DEBUG] Changed view to create:', currentView);
   }
   
   function handleJoinPublic() {
+    console.log('🌐 [DEBUG] Join public button clicked');
     joinType = 'public';
+    console.log('🌐 [DEBUG] Set join type to public:', joinType);
   }
   
   function handleJoinPrivate() {
+    console.log('🔒 [DEBUG] Join private button clicked');
     joinType = 'private';
+    console.log('🔒 [DEBUG] Set join type to private:', joinType);
   }
   
   function handleBack() {
+    console.log('⬅️ [DEBUG] Back button clicked, current view:', currentView);
     if (currentView === 'join' && joinType) {
+      console.log('⬅️ [DEBUG] Going back from join type selection');
       joinType = '';
+      console.log('⬅️ [DEBUG] Cleared join type:', joinType);
     } else if (currentView === 'join' || currentView === 'create') {
+      console.log('⬅️ [DEBUG] Going back to main menu');
       currentView = 'main';
+      console.log('⬅️ [DEBUG] Changed view to main:', currentView);
     } else if (currentView === 'lobby') {
+      console.log('⬅️ [DEBUG] Leaving lobby');
       // Leave lobby
       if (socket) {
+        console.log('⬅️ [DEBUG] Emitting disconnect event');
         socket.emit('disconnect');
       }
       currentView = 'main';
       createdLobby = null;
       currentLobby = null;
       isHost = false;
-    }
-  }
-  
-  function handleJoinLobby(lobbyCode: string) {
-    if (!playerName.trim()) {
-      playerName = `Player${Math.floor(Math.random() * 1000)}`;
-    }
-    socket.emit('joinLobby', { code: lobbyCode, playerName: playerName.trim() });
-  }
-  
-  function handleJoinWithCode() {
-    if (lobbyCode.trim()) {
-      if (!playerName.trim()) {
-        playerName = `Player${Math.floor(Math.random() * 1000)}`;
-      }
-      socket.emit('joinLobby', { code: lobbyCode.trim().toUpperCase(), playerName: playerName.trim() });
-    }
-  }
-  
-  function handleCreateLobby() {
-    if (!playerName.trim()) {
-      playerName = `Player${Math.floor(Math.random() * 1000)}`;
-    }
-    socket.emit('createLobby', { playerName: playerName.trim(), isPrivate: false });
-  }
-  
-  function handleStartGame() {
-    if (socket && isHost) {
-      socket.emit('startGame');
-    }
-  }
-  
-  function copyLobbyCode() {
-    if (currentLobby) {
-      navigator.clipboard.writeText(currentLobby.code).then(() => {
-        console.log('Lobby code copied to clipboard!');
-      }).catch(err => {
-        console.error('Failed to copy lobby code:', err);
+      console.log('⬅️ [DEBUG] Reset lobby state:', {
+        currentView,
+        createdLobby,
+        currentLobby,
+        isHost
       });
     }
   }
   
+  function handleJoinLobby(lobbyCode: string) {
+    console.log('🎯 [DEBUG] Joining lobby with code:', lobbyCode);
+    console.log('🎯 [DEBUG] Current player name:', playerName);
+    
+    if (!playerName.trim()) {
+      const generatedName = `Player${Math.floor(Math.random() * 1000)}`;
+      console.log('🎯 [DEBUG] Generated player name:', generatedName);
+      playerName = generatedName;
+    }
+    
+    const joinData = { code: lobbyCode, playerName: playerName.trim() };
+    console.log('🎯 [DEBUG] Emitting joinLobby with data:', joinData);
+    socket.emit('joinLobby', joinData);
+  }
+  
+  function handleJoinWithCode() {
+    console.log('🔑 [DEBUG] Joining with code button clicked');
+    console.log('🔑 [DEBUG] Lobby code input:', lobbyCode);
+    console.log('🔑 [DEBUG] Player name input:', playerName);
+    
+    if (lobbyCode.trim()) {
+      if (!playerName.trim()) {
+        const generatedName = `Player${Math.floor(Math.random() * 1000)}`;
+        console.log('🔑 [DEBUG] Generated player name:', generatedName);
+        playerName = generatedName;
+      }
+      
+      const joinData = { 
+        code: lobbyCode.trim().toUpperCase(), 
+        playerName: playerName.trim() 
+      };
+      console.log('🔑 [DEBUG] Emitting joinLobby with data:', joinData);
+      socket.emit('joinLobby', joinData);
+    } else {
+      console.warn('⚠️ [DEBUG] Cannot join: lobby code is empty');
+    }
+  }
+  
+  function handleCreateLobby() {
+    console.log('✨ [DEBUG] Create lobby button clicked');
+    console.log('✨ [DEBUG] Player name input:', playerName);
+    
+    if (!playerName.trim()) {
+      const generatedName = `Player${Math.floor(Math.random() * 1000)}`;
+      console.log('✨ [DEBUG] Generated player name:', generatedName);
+      playerName = generatedName;
+    }
+    
+    const createData = { playerName: playerName.trim(), isPrivate: false };
+    console.log('✨ [DEBUG] Emitting createLobby with data:', createData);
+    socket.emit('createLobby', createData);
+  }
+  
+  function handleStartGame() {
+    console.log('🎮 [DEBUG] Start game button clicked');
+    console.log('🎮 [DEBUG] Is host:', isHost);
+    console.log('🎮 [DEBUG] Current lobby:', currentLobby);
+    
+    if (socket && isHost) {
+      console.log('🎮 [DEBUG] Emitting startGame event');
+      socket.emit('startGame');
+    } else {
+      console.warn('⚠️ [DEBUG] Cannot start game - not host or no socket');
+    }
+  }
+  
+  function copyLobbyCode() {
+    console.log('📋 [DEBUG] Copy lobby code button clicked');
+    if (currentLobby) {
+      console.log('📋 [DEBUG] Copying lobby code:', currentLobby.code);
+      navigator.clipboard.writeText(currentLobby.code).then(() => {
+        console.log('✅ [DEBUG] Lobby code copied to clipboard successfully!');
+      }).catch(err => {
+        console.error('❌ [DEBUG] Failed to copy lobby code:', err);
+      });
+    } else {
+      console.warn('⚠️ [DEBUG] No current lobby to copy code from');
+    }
+  }
+  
   function refreshPublicLobbies() {
+    console.log('🔄 [DEBUG] Refresh public lobbies button clicked');
+    console.log('🔄 [DEBUG] Emitting refreshPublicLobbies event');
     socket.emit('refreshPublicLobbies');
+  }
+  
+  // Debug reactive statements
+  $: {
+    console.log('🔄 [DEBUG] Reactive update - currentView changed to:', currentView);
+  }
+  
+  $: {
+    console.log('🔄 [DEBUG] Reactive update - joinType changed to:', joinType);
+  }
+  
+  $: {
+    console.log('🔄 [DEBUG] Reactive update - lobbyCode changed to:', lobbyCode);
+  }
+  
+  $: {
+    console.log('🔄 [DEBUG] Reactive update - playerName changed to:', playerName);
+  }
+  
+  $: {
+    console.log('🔄 [DEBUG] Reactive update - publicLobbies count:', publicLobbies.length);
+  }
+  
+  $: {
+    console.log('🔄 [DEBUG] Reactive update - currentLobby changed:', currentLobby);
+  }
+  
+  $: {
+    console.log('🔄 [DEBUG] Reactive update - isHost changed to:', isHost);
+  }
+  
+  $: {
+    console.log('🔄 [DEBUG] Reactive update - errorMessage changed to:', errorMessage);
   }
 </script>
 
