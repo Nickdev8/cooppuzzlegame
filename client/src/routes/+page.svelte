@@ -160,9 +160,9 @@
     
     socket.on('gameStarting', ({ lobbyCode, players }) => {
       console.log('🎮 [DEBUG] Game starting:', { lobbyCode, players });
-      console.log('🎮 [DEBUG] Redirecting to game page...');
-      // Redirect to game page
-      window.location.href = `/game?lobby=${lobbyCode}`;
+      console.log('🎮 [DEBUG] Redirecting to physics page...');
+      // Redirect to physics page
+      window.location.href = `/physics?lobby=${lobbyCode}`;
     });
     
     socket.on('hostTransferred', ({ newHostId, players }) => {
@@ -472,29 +472,29 @@
   {#if currentView === 'main'}
     <div class="journal-page main-menu">
       <div class="page-header">
-        <h1 class="title">🎮 Coop Puzzle Game</h1>
+        <h1 class="title">Coop Puzzle Game</h1>
         <div class="subtitle">Find your puzzle buddies!</div>
       </div>
       
       <div class="menu-options">
         <button class="journal-button join-btn" on:click={handleJoin}>
-          <span class="button-icon">🔍</span>
+          <span class="button-icon">Join</span>
           <span class="button-text">Join a Lobby</span>
         </button>
         
         <button class="journal-button create-btn" on:click={handleCreate}>
-          <span class="button-icon">✨</span>
+          <span class="button-icon">Create</span>
           <span class="button-text">Create a Lobby</span>
         </button>
       </div>
       
       <div class="decorative-elements">
-        <div class="doodle doodle-1">🧩</div>
-        <div class="doodle doodle-2">🎯</div>
-        <div class="doodle doodle-3">🌟</div>
-        <div class="doodle doodle-4">💡</div>
-        <div class="doodle doodle-5">🎨</div>
-        <div class="doodle doodle-6">📝</div>
+        <div class="doodle doodle-1">Puzzle</div>
+        <div class="doodle doodle-2">Game</div>
+        <div class="doodle doodle-3">Fun</div>
+        <div class="doodle doodle-4">Play</div>
+        <div class="doodle doodle-5">Team</div>
+        <div class="doodle doodle-6">Solve</div>
       </div>
     </div>
   {/if}
@@ -546,13 +546,13 @@
       
       <div class="join-buttons">
         <button class="journal-button public-btn" on:click={handleJoinPublic}>
-          <span class="button-icon">🌐</span>
+          <span class="button-icon">Public</span>
           <span class="button-text">Public Lobbies</span>
           <span class="button-subtitle">Browse open games</span>
         </button>
         
         <button class="journal-button private-btn" on:click={handleJoinPrivate}>
-          <span class="button-icon">🔒</span>
+          <span class="button-icon">Private</span>
           <span class="button-text">Private Lobby</span>
           <span class="button-subtitle">Enter a code</span>
         </button>
@@ -575,7 +575,7 @@
               <h3 class="lobby-name">Lobby {lobby.code}</h3>
               <div class="lobby-players">
                 <span class="player-count">{lobby.playerCount}/{lobby.maxPlayers}</span>
-                <span class="player-icon">👥</span>
+                <span class="player-icon">Players</span>
               </div>
             </div>
             <button class="join-lobby-btn" on:click={() => handleJoinLobby(lobby.code)}>
@@ -586,7 +586,7 @@
       </div>
       
       <div class="refresh-section">
-        <button class="refresh-btn" on:click={refreshPublicLobbies}>🔄 Refresh</button>
+        <button class="refresh-btn" on:click={refreshPublicLobbies}>Refresh</button>
       </div>
     </div>
   {/if}
@@ -651,7 +651,7 @@
               class="toggle-option {!isPrivateLobby ? 'active' : ''}" 
               on:click={() => isPrivateLobby = false}
             >
-              <span class="toggle-icon">🌐</span>
+              <span class="toggle-icon">Public</span>
               <span class="toggle-text">Public</span>
               <span class="toggle-subtitle">Anyone can join</span>
             </button>
@@ -659,7 +659,7 @@
               class="toggle-option {isPrivateLobby ? 'active' : ''}" 
               on:click={() => isPrivateLobby = true}
             >
-              <span class="toggle-icon">🔒</span>
+              <span class="toggle-icon">Private</span>
               <span class="toggle-text">Private</span>
               <span class="toggle-subtitle">Code required</span>
             </button>
@@ -667,7 +667,7 @@
         </div>
         
         <button class="create-lobby-btn" on:click={handleCreateLobby} disabled={!playerName.trim()}>
-          ✨ Create {isPrivateLobby ? 'Private' : 'Public'} Lobby
+          Create {isPrivateLobby ? 'Private' : 'Public'} Lobby
         </button>
       </div>
     </div>
@@ -687,10 +687,10 @@
           <div class="code-display">{currentLobby?.code}</div>
           <div class="lobby-privacy">
             <span class="privacy-badge {currentLobby?.isPrivate ? 'private' : 'public'}">
-              {currentLobby?.isPrivate ? '🔒 Private' : '🌐 Public'}
+              {currentLobby?.isPrivate ? 'Private' : 'Public'}
             </span>
           </div>
-          <button class="copy-btn" on:click={copyLobbyCode}>📋 Copy</button>
+          <button class="copy-btn" on:click={copyLobbyCode}>Copy</button>
         </div>
         
         <div class="players-section">
@@ -715,10 +715,10 @@
                   on:mouseenter={() => isHost && !player.isHost && (hoveredPlayerId = player.id)}
                   on:mouseleave={() => hoveredPlayerId = ''}
                 >
-                  <span class="player-icon">👤</span>
+                  <span class="player-icon">Player</span>
                   <span class="player-name">{player.name}</span>
                   {#if player.isHost}
-                    <span class="host-badge">👑 Host</span>
+                    <span class="host-badge">Host</span>
                   {/if}
                   {#if isHost && !player.isHost && hoveredPlayerId === player.id}
                     <div class="transfer-tooltip">Transfer Host</div>
@@ -731,10 +731,10 @@
         
         <div class="lobby-actions">
           <button class="start-game-btn" on:click={handleStartGame} disabled={!isHost || (currentLobby?.players?.length || 0) < 2}>
-            🎮 Start Game
+            Start Game
           </button>
           <button class="physics-btn" on:click={() => window.location.href = `/physics?lobby=${currentLobby?.code}`}>
-            ⚡ Physics Engine
+            Physics Engine
           </button>
         </div>
       </div>
@@ -744,7 +744,7 @@
   <!-- Error Message -->
   {#if errorMessage}
     <div class="error-toast">
-      <span class="error-text">⚠️ {errorMessage}</span>
+      <span class="error-text">Error: {errorMessage}</span>
     </div>
   {/if}
   
@@ -763,7 +763,7 @@
         on:click|stopPropagation
       >
         <div class="popup-header">
-          <h3 id="not-host-title">⚠️ Not the Host</h3>
+          <h3 id="not-host-title">Not the Host</h3>
         </div>
         <div class="popup-body">
           <p id="not-host-description">Only the host can start the game. Ask the host to start the game or transfer host privileges to you.</p>
@@ -790,7 +790,7 @@
         on:click|stopPropagation
       >
         <div class="popup-header">
-          <h3 id="transfer-host-title">👑 Transfer Host</h3>
+          <h3 id="transfer-host-title">Transfer Host</h3>
         </div>
         <div class="popup-body">
           <p id="transfer-host-description">Are you sure you want to transfer host privileges to <strong>{transferTargetPlayer.name}</strong>?</p>

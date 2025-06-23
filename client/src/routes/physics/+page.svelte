@@ -2,19 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import io, { Socket } from 'socket.io-client';
 
-	let anchors: { x: number; y: number }[] = [];
 	let lobbyCode: string | null = null;
-
-	interface BodyState {
-		id: string;
-		x: number;
-		y: number;
-		angle: number;
-		width: number;
-		height: number;
-		image?: string;
-	}
-
 	let canvas: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D;
 	let socket: Socket;
@@ -48,39 +36,25 @@
 
 	let canvasWidth = 1920;
 	let canvasHeight = 1080;
-	let objects: Record<string, BodyState> = {};
 
-	let dragging = false;
-	let dragId: string | null = null;
-	const RADIUS = 20;
-	let spriteCache: Record<string, HTMLImageElement> = {};
+	// Game state
+	let button1Pressed = false;
+	let button2Pressed = false;
+	let lightBulbOn = false;
+	let button1PressedBy: string[] = [];
+	let button2PressedBy: string[] = [];
 
-	// Performance optimization for Raspberry Pi 4
+	// Physics objects
+	let button1 = { x: 400, y: 600, width: 120, height: 80, radius: 60 };
+	let button2 = { x: 800, y: 600, width: 120, height: 80, radius: 60 };
+	let lightBulb = { x: 600, y: 300, width: 100, height: 100, radius: 50 };
+
 	let lastDrawTime = 0;
-	const targetFPS = 30; // Reduced from 60 for better performance
+	const targetFPS = 30;
 	const frameInterval = 1000 / targetFPS;
 	let animationFrameId: number;
 
 	const log = (...args: any[]) => console.log(...args);
-	// const log = (...args: any[]) => {};
-
-	function colorForId(id: string): string {
-		let hash = 0;
-		for (let i = 0; i < id.length; i++) {
-			hash = (hash * 31 + id.charCodeAt(i)) | 0;
-		}
-		const hue = (hash >>> 0) % 360;
-		return `hsl(${hue}, 100%, 50%)`;
-	}
-
-	function makeCursorDataURL(color: string): string {
-		const svg = `
-     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 32 32">
-       <path d="M1,1 L31,16 L1,31 Z" fill="${color}" stroke="black" stroke-width="1"/>
-     </svg>
-   `.trim();
-		return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-	}
 
 	function handleWindowMousemove(e: MouseEvent): void {
 		if (!canvas) return;
@@ -96,9 +70,6 @@
 			} else {
 				socket.emit('mouseLeave');
 			}
-			if (dragging) {
-				socket.emit('drag', { x, y });
-			}
 		} catch (err) {
 			console.error('[handleWindowMousemove] emit error:', err);
 		}
@@ -108,53 +79,64 @@
 		socket.emit('mouseLeave');
 	}
 
-	function handleWindowMouseup(): void {
-		log('handleWindowMouseup', { dragging, dragId });
-		if (dragging) {
-			socket.emit('endDrag');
-			dragging = false;
-			dragId = null;
-		}
-	}
-
 	function handleCanvasMousedown(e: MouseEvent): void {
 		const rect = canvas.getBoundingClientRect();
 		const scaleX = canvas.width / rect.width;
 		const scaleY = canvas.height / rect.height;
 		const mx = (e.clientX - rect.left) * scaleX;
 		const my = (e.clientY - rect.top) * scaleY;
-		log('handleCanvasMousedown', { mx, my });
-		let hit = false;
-		for (const id in objects) {
-			const o = objects[id];
-			const dx = mx - o.x;
-			const dy = my - o.y;
-			if (dx * dx + dy * dy <= RADIUS * RADIUS) {
-				hit = true;
-				dragging = true;
-				dragId = id;
-				log('   • startDrag on', id, { mx, my });
-				socket.emit('startDrag', { id, x: mx, y: my });
-				break;
+
+		// Check if clicking on button 1
+		const dx1 = mx - button1.x;
+		const dy1 = my - button1.y;
+		if (dx1 * dx1 + dy1 * dy1 <= button1.radius * button1.radius) {
+			if (socket.id && !button1PressedBy.includes(socket.id)) {
+				button1PressedBy.push(socket.id);
+				button1Pressed = button1PressedBy.length > 0;
+				socket.emit('buttonPress', { button: 1, pressed: true, playerId: socket.id });
 			}
 		}
-		if (!hit && dragging) {
-			log('   • endDrag (missed hit)', { dragId });
-			socket.emit('endDrag');
-			dragging = false;
-			dragId = null;
+
+		// Check if clicking on button 2
+		const dx2 = mx - button2.x;
+		const dy2 = my - button2.y;
+		if (dx2 * dx2 + dy2 * dy2 <= button2.radius * button2.radius) {
+			if (socket.id && !button2PressedBy.includes(socket.id)) {
+				button2PressedBy.push(socket.id);
+				button2Pressed = button2PressedBy.length > 0;
+				socket.emit('buttonPress', { button: 2, pressed: true, playerId: socket.id });
+			}
 		}
 	}
 
-	function handleCanvasMousemove(e: MouseEvent): void {
-		if (!dragging) return;
+	function handleCanvasMouseup(e: MouseEvent): void {
 		const rect = canvas.getBoundingClientRect();
 		const scaleX = canvas.width / rect.width;
 		const scaleY = canvas.height / rect.height;
 		const mx = (e.clientX - rect.left) * scaleX;
 		const my = (e.clientY - rect.top) * scaleY;
-		log('handleCanvasMousemove (dragging)', { mx, my });
-		socket.emit('drag', { x: mx, y: my });
+
+		// Check if releasing button 1
+		const dx1 = mx - button1.x;
+		const dy1 = my - button1.y;
+		if (dx1 * dx1 + dy1 * dy1 <= button1.radius * button1.radius) {
+			if (socket.id) {
+				button1PressedBy = button1PressedBy.filter(id => id !== socket.id);
+				button1Pressed = button1PressedBy.length > 0;
+				socket.emit('buttonPress', { button: 1, pressed: false, playerId: socket.id });
+			}
+		}
+
+		// Check if releasing button 2
+		const dx2 = mx - button2.x;
+		const dy2 = my - button2.y;
+		if (dx2 * dx2 + dy2 * dy2 <= button2.radius * button2.radius) {
+			if (socket.id) {
+				button2PressedBy = button2PressedBy.filter(id => id !== socket.id);
+				button2Pressed = button2PressedBy.length > 0;
+				socket.emit('buttonPress', { button: 2, pressed: false, playerId: socket.id });
+			}
+		}
 	}
 
 	function draw(): void {
@@ -165,50 +147,30 @@
 		}
 		lastDrawTime = now;
 
-		const t0 = performance.now();
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
 		// Draw bullet journal style background
 		drawBulletJournalBackground();
 
-		// Draw physics objects
-		for (const id in objects) {
-			const o = objects[id];
-			if (o.image) {
-				let img = spriteCache[id];
-				if (!img) {
-					img = new Image();
-					img.src = o.image;
-					spriteCache[id] = img;
-					img.onload = () => {
-						log('[draw] Image loaded for', id);
-						draw();
-					};
-					img.onerror = (e) => console.error('[draw] Image load error for', id, e);
-				}
-				ctx.save();
-				ctx.translate(o.x, o.y);
-				ctx.rotate(o.angle);
-				ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
-				ctx.restore();
-			} else {
-				ctx.beginPath();
-				ctx.arc(o.x, o.y, RADIUS, 0, Math.PI * 2);
-				ctx.fillStyle = '#4a90e2';
-				ctx.fill();
-				ctx.strokeStyle = '#2c3e50';
-				ctx.lineWidth = 2;
-				ctx.stroke();
-			}
-		}
+		// Draw title
+		ctx.save();
+		ctx.fillStyle = '#2c3e50';
+		ctx.font = 'bold 48px "Comic Neue", cursive';
+		ctx.textAlign = 'center';
+		ctx.fillText('Collaborative Puzzle', canvas.width / 2, 120);
+		ctx.font = '24px "Comic Neue", cursive';
+		ctx.fillStyle = '#7f8c8d';
+		ctx.fillText('Press both buttons together to light the bulb', canvas.width / 2, 160);
+		ctx.restore();
 
-		// Draw anchors
-		ctx.fillStyle = '#e74c3c';
-		for (const p of anchors) {
-			ctx.beginPath();
-			ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
-			ctx.fill();
-		}
+		// Draw button 1
+		drawButton(button1, button1Pressed, 'Button 1');
+
+		// Draw button 2
+		drawButton(button2, button2Pressed, 'Button 2');
+
+		// Draw light bulb
+		drawLightBulb(lightBulb, lightBulbOn);
 
 		// Draw other players' cursors with names
 		for (const clientId in mousePositions) {
@@ -243,9 +205,6 @@
 		}
 
 		ctx.filter = 'none';
-
-		const t1 = performance.now();
-		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
 
 		animationFrameId = requestAnimationFrame(draw);
 	}
@@ -292,8 +251,122 @@
 		ctx.stroke();
 	}
 
+	function drawButton(button: any, pressed: boolean, label: string): void {
+		ctx.save();
+		
+		// Button shadow
+		ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+		ctx.beginPath();
+		ctx.arc(button.x + 4, button.y + 4, button.radius, 0, Math.PI * 2);
+		ctx.fill();
+
+		// Button body
+		const gradient = ctx.createRadialGradient(
+			button.x - 20, button.y - 20, 0,
+			button.x, button.y, button.radius
+		);
+		
+		if (pressed) {
+			gradient.addColorStop(0, '#e74c3c');
+			gradient.addColorStop(1, '#c0392b');
+		} else {
+			gradient.addColorStop(0, '#3498db');
+			gradient.addColorStop(1, '#2980b9');
+		}
+		
+		ctx.fillStyle = gradient;
+		ctx.beginPath();
+		ctx.arc(button.x, button.y, button.radius, 0, Math.PI * 2);
+		ctx.fill();
+
+		// Button border
+		ctx.strokeStyle = '#2c3e50';
+		ctx.lineWidth = 3;
+		ctx.stroke();
+
+		// Button label
+		ctx.fillStyle = 'white';
+		ctx.font = 'bold 18px "Comic Neue", cursive';
+		ctx.textAlign = 'center';
+		ctx.fillText(label, button.x, button.y + 6);
+
+		ctx.restore();
+	}
+
+	function drawLightBulb(bulb: any, on: boolean): void {
+		ctx.save();
+
+		// Bulb shadow
+		ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+		ctx.beginPath();
+		ctx.arc(bulb.x + 4, bulb.y + 4, bulb.radius, 0, Math.PI * 2);
+		ctx.fill();
+
+		// Bulb glow when on
+		if (on) {
+			const glowGradient = ctx.createRadialGradient(
+				bulb.x, bulb.y, 0,
+				bulb.x, bulb.y, bulb.radius * 2
+			);
+			glowGradient.addColorStop(0, 'rgba(255, 255, 0, 0.3)');
+			glowGradient.addColorStop(1, 'rgba(255, 255, 0, 0)');
+			ctx.fillStyle = glowGradient;
+			ctx.beginPath();
+			ctx.arc(bulb.x, bulb.y, bulb.radius * 2, 0, Math.PI * 2);
+			ctx.fill();
+		}
+
+		// Bulb body
+		const bulbGradient = ctx.createRadialGradient(
+			bulb.x - 15, bulb.y - 15, 0,
+			bulb.x, bulb.y, bulb.radius
+		);
+		
+		if (on) {
+			bulbGradient.addColorStop(0, '#f1c40f');
+			bulbGradient.addColorStop(1, '#f39c12');
+		} else {
+			bulbGradient.addColorStop(0, '#bdc3c7');
+			bulbGradient.addColorStop(1, '#95a5a6');
+		}
+		
+		ctx.fillStyle = bulbGradient;
+		ctx.beginPath();
+		ctx.arc(bulb.x, bulb.y, bulb.radius, 0, Math.PI * 2);
+		ctx.fill();
+
+		// Bulb border
+		ctx.strokeStyle = '#2c3e50';
+		ctx.lineWidth = 3;
+		ctx.stroke();
+
+		// Bulb filament
+		ctx.strokeStyle = '#2c3e50';
+		ctx.lineWidth = 2;
+		ctx.beginPath();
+		ctx.moveTo(bulb.x - 15, bulb.y);
+		ctx.lineTo(bulb.x + 15, bulb.y);
+		ctx.moveTo(bulb.x, bulb.y - 15);
+		ctx.lineTo(bulb.x, bulb.y + 15);
+		ctx.stroke();
+
+		// Bulb base
+		ctx.fillStyle = '#34495e';
+		ctx.beginPath();
+		ctx.rect(bulb.x - 20, bulb.y + bulb.radius - 5, 40, 15);
+		ctx.fill();
+
+		// Status text
+		ctx.fillStyle = on ? '#27ae60' : '#7f8c8d';
+		ctx.font = 'bold 20px "Comic Neue", cursive';
+		ctx.textAlign = 'center';
+		ctx.fillText(on ? 'ON' : 'OFF', bulb.x, bulb.y + bulb.radius + 40);
+
+		ctx.restore();
+	}
+
 	onMount(() => {
-		log('[onMount] initializing physics engine');
+		log('[onMount] initializing puzzle game');
 
 		canvas.width = canvasWidth;
 		canvas.height = canvasHeight;
@@ -326,9 +399,9 @@
 		
 		// Set lobby code and update page title
 		lobbyCode = lobbyCodeParam;
-		document.title = `Physics Engine - Lobby ${lobbyCode}`;
+		document.title = `Collaborative Puzzle - Lobby ${lobbyCode}`;
 		
-		console.log('[onMount] Joining physics engine for lobby:', lobbyCode);
+		console.log('[onMount] Joining puzzle game for lobby:', lobbyCode);
 		
 		// Connect to game server
 		const gameUrl = window.location.hostname === 'localhost' 
@@ -352,22 +425,22 @@
 			
 			// Join the specific game room for this lobby
 			socket.emit('joinGame', { lobbyCode });
-			console.log('Joined physics engine for lobby:', lobbyCode);
+			console.log('Joined puzzle game for lobby:', lobbyCode);
 		});
 
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
 		socket.on('disconnect', (reason) => console.warn('[socket] disconnect:', reason));
 
-		// Handle state updates
-		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			objects = {};
-			payload.bodies.forEach((o) => (objects[o.id] = o));
-			anchors = payload.anchors;
-		});
-
 		// Handle player updates
 		socket.on('players', (payload: PlayerInfo[]) => {
 			players = payload;
+		});
+
+		// Handle button press updates
+		socket.on('buttonState', (payload: { button1Pressed: boolean, button2Pressed: boolean, lightBulbOn: boolean }) => {
+			button1Pressed = payload.button1Pressed;
+			button2Pressed = payload.button2Pressed;
+			lightBulbOn = payload.lightBulbOn;
 		});
 
 		socket.on('mouseMoved', (payload: { id: string; x: number; y: number }) => {
@@ -392,14 +465,12 @@
 
 		window.addEventListener('mousemove', handleWindowMousemove);
 		window.addEventListener('mouseleave', handleWindowMouseleave);
-		window.addEventListener('mouseup', handleWindowMouseup);
 	});
 
 	onDestroy(() => {
 		log('[onDestroy] cleaning up');
 		window.removeEventListener('mousemove', handleWindowMousemove);
 		window.removeEventListener('mouseleave', handleWindowMouseleave);
-		window.removeEventListener('mouseup', handleWindowMouseup);
 		
 		if (animationFrameId) {
 			cancelAnimationFrame(animationFrameId);
@@ -409,28 +480,26 @@
 	});
 </script>
 
-<div class="physics-container">
+<div class="puzzle-container">
 	<canvas
 		bind:this={canvas}
 		width={canvasWidth}
 		height={canvasHeight}
 		style="cursor:url('/images/cursor.svg') 14 8, auto"
 		on:mousedown={handleCanvasMousedown}
-		on:mousemove={handleCanvasMousemove}
+		on:mouseup={handleCanvasMouseup}
 	></canvas>
 	
 	{#if lobbyCode}
 		<div class="lobby-indicator">
 			<div class="lobby-header">
-				<span class="lobby-icon">⚡</span>
-				<span class="lobby-text">Physics Engine</span>
+				<span class="lobby-text">Collaborative Puzzle</span>
 			</div>
 			<div class="lobby-code">Lobby: {lobbyCode}</div>
 		</div>
 		
 		<div class="player-list">
 			<div class="player-list-header">
-				<span class="player-icon">👥</span>
 				<span>Players ({players.length})</span>
 			</div>
 			{#each players as player}
@@ -442,13 +511,13 @@
 		</div>
 		
 		<button class="back-to-lobby-btn" on:click={() => window.location.href = '/'}>
-			← Back to Lobby
+			Back to Lobby
 		</button>
 	{/if}
 </div>
 
 <style>
-	.physics-container {
+	.puzzle-container {
 		height: calc(var(--vh) * 100);
 		width: 100vw;
 		position: relative;
@@ -490,10 +559,6 @@
 		margin-bottom: 5px;
 	}
 	
-	.lobby-icon {
-		font-size: 16px;
-	}
-	
 	.lobby-text {
 		font-weight: 700;
 		color: #34495e;
@@ -530,10 +595,6 @@
 		color: #34495e;
 		border-bottom: 2px solid #e8e4d9;
 		padding-bottom: 8px;
-	}
-	
-	.player-icon {
-		font-size: 16px;
 	}
 	
 	.player-item {

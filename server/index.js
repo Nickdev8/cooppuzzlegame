@@ -39,6 +39,11 @@ class GameRoom {
     this.lastStateUpdate = 0;
     this.stateUpdateInterval = CONFIG.PHYSICS.STATE_UPDATE_INTERVAL;
     
+    // Puzzle game state
+    this.button1PressedBy = new Set();
+    this.button2PressedBy = new Set();
+    this.lightBulbOn = false;
+    
     console.log(`[GameRoom:${lobbyCode}] Creating new game room`);
     this.setupPhysics();
     this.setupScene();
@@ -294,6 +299,46 @@ class GameRoom {
     }
     return (hash >>> 0) % 360;
   }
+
+  handleButtonPress(socketId, { button, pressed, playerId }) {
+    console.log(`[GameRoom:${this.lobbyCode}] Button ${button} ${pressed ? 'pressed' : 'released'} by ${playerId}`);
+    
+    if (button === 1) {
+      if (pressed) {
+        this.button1PressedBy.add(playerId);
+      } else {
+        this.button1PressedBy.delete(playerId);
+      }
+    } else if (button === 2) {
+      if (pressed) {
+        this.button2PressedBy.add(playerId);
+      } else {
+        this.button2PressedBy.delete(playerId);
+      }
+    }
+    
+    // Update light bulb state
+    const button1Pressed = this.button1PressedBy.size > 0;
+    const button2Pressed = this.button2PressedBy.size > 0;
+    this.lightBulbOn = button1Pressed && button2Pressed;
+    
+    // Broadcast updated state to all players
+    this.broadcastButtonState();
+  }
+
+  broadcastButtonState() {
+    const button1Pressed = this.button1PressedBy.size > 0;
+    const button2Pressed = this.button2PressedBy.size > 0;
+    
+    const state = {
+      button1Pressed,
+      button2Pressed,
+      lightBulbOn: this.lightBulbOn
+    };
+    
+    io.to(this.lobbyCode).emit('buttonState', state);
+    console.log(`[GameRoom:${this.lobbyCode}] Button state:`, state);
+  }
 }
 
 // ─── GAME ROOM MANAGEMENT ───────────────────────────────────────────────
@@ -370,6 +415,13 @@ io.on('connection', (socket) => {
   socket.on('endDrag', () => {
     if (currentGameRoom) {
       currentGameRoom.handleEndDrag(socket.id);
+    }
+  });
+
+  // Handle button press events
+  socket.on('buttonPress', (data) => {
+    if (currentGameRoom) {
+      currentGameRoom.handleButtonPress(socket.id, data);
     }
   });
 
