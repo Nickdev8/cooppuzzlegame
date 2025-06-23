@@ -1,25 +1,96 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
+  import io, { Socket } from 'socket.io-client';
   
   let currentView = 'main'; // main, join, create, lobby
   let joinType = ''; // public, private
   let lobbyCode = '';
   let playerName = '';
-  let publicLobbies = [
-    { id: 1, name: 'Puzzle Masters', players: 3, maxPlayers: 4 },
-    { id: 2, name: 'Brain Teasers', players: 1, maxPlayers: 4 },
-    { id: 3, name: 'Logic Legends', players: 2, maxPlayers: 4 }
-  ];
-  let createdLobby = {
-    code: 'ABC123',
-    name: 'My Lobby',
-    players: ['You', 'Alice', 'Bob'],
-    maxPlayers: 4
-  };
+  let socket: Socket;
+  let publicLobbies: Array<{
+    code: string;
+    playerCount: number;
+    maxPlayers: number;
+    createdAt: number;
+  }> = [];
+  let createdLobby: {
+    code: string;
+    players: Array<{ id: string; name: string; isHost: boolean }>;
+    maxPlayers: number;
+  } | null = null;
+  let currentLobby: {
+    code: string;
+    players: Array<{ id: string; name: string; isHost: boolean }>;
+    maxPlayers: number;
+  } | null = null;
+  let isHost = false;
+  let errorMessage = '';
   
-  function generateLobbyCode() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
-  }
+  onMount(() => {
+    // Connect to lobby server
+    socket = io('http://localhost:3081');
+    
+    socket.on('connect', () => {
+      console.log('Connected to lobby server');
+    });
+    
+    socket.on('publicLobbies', (lobbies) => {
+      publicLobbies = lobbies;
+    });
+    
+    socket.on('lobbyCreated', (lobby) => {
+      createdLobby = lobby;
+      currentLobby = lobby;
+      isHost = true;
+      currentView = 'lobby';
+    });
+    
+    socket.on('lobbyJoined', (lobby) => {
+      currentLobby = lobby;
+      isHost = false;
+      currentView = 'lobby';
+    });
+    
+    socket.on('joinError', (error) => {
+      errorMessage = error;
+      setTimeout(() => {
+        errorMessage = '';
+      }, 3000);
+    });
+    
+    socket.on('playerJoined', ({ id, name, playerCount }) => {
+      if (currentLobby) {
+        currentLobby.players.push({ id, name, isHost: false });
+      }
+    });
+    
+    socket.on('playerLeft', ({ id, playerCount, newHost }) => {
+      if (currentLobby) {
+        currentLobby.players = currentLobby.players.filter(p => p.id !== id);
+        if (newHost) {
+          isHost = newHost === socket.id;
+        }
+      }
+    });
+    
+    socket.on('gameStarting', ({ lobbyCode, players }) => {
+      // Redirect to game page
+      window.location.href = `/game?lobby=${lobbyCode}`;
+    });
+    
+    socket.on('error', (error) => {
+      errorMessage = error;
+      setTimeout(() => {
+        errorMessage = '';
+      }, 3000);
+    });
+  });
+  
+  onDestroy(() => {
+    if (socket) {
+      socket.disconnect();
+    }
+  });
   
   function handleJoin() {
     currentView = 'join';
@@ -27,7 +98,6 @@
   
   function handleCreate() {
     currentView = 'create';
-    createdLobby.code = generateLobbyCode();
   }
   
   function handleJoinPublic() {
@@ -43,33 +113,59 @@
       joinType = '';
     } else if (currentView === 'join' || currentView === 'create') {
       currentView = 'main';
+    } else if (currentView === 'lobby') {
+      // Leave lobby
+      if (socket) {
+        socket.emit('disconnect');
+      }
+      currentView = 'main';
+      createdLobby = null;
+      currentLobby = null;
+      isHost = false;
     }
   }
   
-  function handleJoinLobby(lobbyId: number) {
-    // Handle joining a specific lobby
-    console.log('Joining lobby:', lobbyId);
+  function handleJoinLobby(lobbyCode: string) {
+    if (!playerName.trim()) {
+      playerName = `Player${Math.floor(Math.random() * 1000)}`;
+    }
+    socket.emit('joinLobby', { code: lobbyCode, playerName: playerName.trim() });
   }
   
   function handleJoinWithCode() {
     if (lobbyCode.trim()) {
-      // Handle joining with code
-      console.log('Joining with code:', lobbyCode);
+      if (!playerName.trim()) {
+        playerName = `Player${Math.floor(Math.random() * 1000)}`;
+      }
+      socket.emit('joinLobby', { code: lobbyCode.trim().toUpperCase(), playerName: playerName.trim() });
     }
   }
   
+  function handleCreateLobby() {
+    if (!playerName.trim()) {
+      playerName = `Player${Math.floor(Math.random() * 1000)}`;
+    }
+    socket.emit('createLobby', { playerName: playerName.trim(), isPrivate: false });
+  }
+  
   function handleStartGame() {
-    // Handle starting the game
-    console.log('Starting game');
+    if (socket && isHost) {
+      socket.emit('startGame');
+    }
   }
   
   function copyLobbyCode() {
-    navigator.clipboard.writeText(createdLobby.code).then(() => {
-      // You could add a toast notification here
-      console.log('Lobby code copied to clipboard!');
-    }).catch(err => {
-      console.error('Failed to copy lobby code:', err);
-    });
+    if (currentLobby) {
+      navigator.clipboard.writeText(currentLobby.code).then(() => {
+        console.log('Lobby code copied to clipboard!');
+      }).catch(err => {
+        console.error('Failed to copy lobby code:', err);
+      });
+    }
+  }
+  
+  function refreshPublicLobbies() {
+    socket.emit('refreshPublicLobbies');
   }
 </script>
 
@@ -145,13 +241,13 @@
         {#each publicLobbies as lobby}
           <div class="lobby-card">
             <div class="lobby-info">
-              <h3 class="lobby-name">{lobby.name}</h3>
+              <h3 class="lobby-name">Lobby {lobby.code}</h3>
               <div class="lobby-players">
-                <span class="player-count">{lobby.players}/{lobby.maxPlayers}</span>
+                <span class="player-count">{lobby.playerCount}/{lobby.maxPlayers}</span>
                 <span class="player-icon">👥</span>
               </div>
             </div>
-            <button class="join-lobby-btn" on:click={() => handleJoinLobby(lobby.id)}>
+            <button class="join-lobby-btn" on:click={() => handleJoinLobby(lobby.code)}>
               Join
             </button>
           </div>
@@ -159,7 +255,7 @@
       </div>
       
       <div class="refresh-section">
-        <button class="refresh-btn">🔄 Refresh</button>
+        <button class="refresh-btn" on:click={refreshPublicLobbies}>🔄 Refresh</button>
       </div>
     </div>
   {/if}
@@ -173,6 +269,14 @@
       </div>
       
       <div class="code-input-section">
+        <label class="input-label">Your Name:</label>
+        <input 
+          type="text" 
+          bind:value={playerName}
+          placeholder="Enter your name"
+          class="name-input"
+          maxlength="20"
+        />
         <label class="input-label">Enter Lobby Code:</label>
         <input 
           type="text" 
@@ -181,7 +285,7 @@
           class="code-input"
           maxlength="6"
         />
-        <button class="join-code-btn" on:click={handleJoinWithCode} disabled={!lobbyCode.trim()}>
+        <button class="join-code-btn" on:click={handleJoinWithCode} disabled={!lobbyCode.trim() || !playerName.trim()}>
           Join Lobby
         </button>
       </div>
@@ -193,37 +297,70 @@
     <div class="journal-page create-lobby">
       <div class="page-header">
         <button class="back-button" on:click={handleBack}>← Back</button>
+        <h2 class="title">Create a Lobby</h2>
+      </div>
+      
+      <div class="name-input-section">
+        <label class="input-label">Your Name:</label>
+        <input 
+          type="text" 
+          bind:value={playerName}
+          placeholder="Enter your name"
+          class="name-input"
+          maxlength="20"
+        />
+        <button class="create-lobby-btn" on:click={handleCreateLobby} disabled={!playerName.trim()}>
+          ✨ Create Lobby
+        </button>
+      </div>
+    </div>
+  {/if}
+  
+  <!-- Lobby Room -->
+  {#if currentView === 'lobby' && currentLobby}
+    <div class="journal-page lobby-room">
+      <div class="page-header">
+        <button class="back-button" on:click={handleBack}>← Back</button>
         <h2 class="title">Your Lobby</h2>
       </div>
       
       <div class="lobby-info-card">
         <div class="lobby-code-section">
           <h3>Lobby Code</h3>
-          <div class="code-display">{createdLobby.code}</div>
+          <div class="code-display">{currentLobby?.code}</div>
           <button class="copy-btn" on:click={copyLobbyCode}>📋 Copy</button>
         </div>
         
         <div class="players-section">
-          <h3>Players ({createdLobby.players.length}/{createdLobby.maxPlayers})</h3>
+          <h3>Players ({currentLobby?.players?.length || 0}/{currentLobby?.maxPlayers || 4})</h3>
           <div class="players-list">
-            {#each createdLobby.players as player}
-              <div class="player-item">
-                <span class="player-icon">👤</span>
-                <span class="player-name">{player}</span>
-                {#if player === 'You'}
-                  <span class="host-badge">Host</span>
-                {/if}
-              </div>
-            {/each}
+            {#if currentLobby?.players}
+              {#each currentLobby.players as player}
+                <div class="player-item">
+                  <span class="player-icon">👤</span>
+                  <span class="player-name">{player.name}</span>
+                  {#if player.isHost}
+                    <span class="host-badge">Host</span>
+                  {/if}
+                </div>
+              {/each}
+            {/if}
           </div>
         </div>
         
         <div class="lobby-actions">
-          <button class="start-game-btn" on:click={handleStartGame} disabled={createdLobby.players.length < 2}>
+          <button class="start-game-btn" on:click={handleStartGame} disabled={!isHost || (currentLobby?.players?.length || 0) < 2}>
             🎮 Start Game
           </button>
         </div>
       </div>
+    </div>
+  {/if}
+  
+  <!-- Error Message -->
+  {#if errorMessage}
+    <div class="error-toast">
+      <span class="error-text">⚠️ {errorMessage}</span>
     </div>
   {/if}
 </div>
@@ -767,6 +904,78 @@
     
     .code-input {
       width: 150px;
+    }
+  }
+  
+  .name-input-section {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+  }
+  
+  .name-input {
+    width: 250px;
+    padding: 15px;
+    border: 3px solid #ddd;
+    border-radius: 10px;
+    font-size: 1.1rem;
+    font-family: 'Comic Neue', cursive;
+    text-align: center;
+  }
+  
+  .name-input:focus {
+    outline: none;
+    border-color: #ff6b6b;
+  }
+  
+  .create-lobby-btn {
+    background: #ff6b6b;
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+  }
+  
+  .create-lobby-btn:hover:not(:disabled) {
+    background: #e55a5a;
+    transform: scale(1.05);
+  }
+  
+  .create-lobby-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
+  
+  .error-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #ff6b6b;
+    color: white;
+    padding: 15px 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    z-index: 1000;
+    animation: slideIn 0.3s ease;
+  }
+  
+  .error-text {
+    font-weight: 600;
+  }
+  
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
     }
   }
 </style>
