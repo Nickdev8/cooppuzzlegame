@@ -1,17 +1,18 @@
 @import 'tailwindcss';
 
 :root {
-  /* fallback */
+  /* fallback for game canvas */
   --vh: 1vh;
 }
 
 * {
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  box-sizing: border-box;
 }
 
-
 body {
-  background-color: black;
+  font-family: 'Comic Neue', cursive;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  min-height: 100vh;
 }

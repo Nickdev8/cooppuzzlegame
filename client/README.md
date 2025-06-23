@@ -1,38 +1,80 @@
-# sv
+# Coop Puzzle Game - Client
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A cooperative puzzle game with a beautiful bullet journal-style lobby system.
 
-## Creating a project
+## Features
 
-If you're seeing this, you've probably already done this step. Congrats!
+### 🎮 Lobby System
+- **Main Menu**: Choose between joining or creating a lobby
+- **Join Options**: 
+  - Public lobbies: Browse and join open games
+  - Private lobbies: Enter a code to join specific games
+- **Create Lobby**: Generate a unique lobby code and manage players
+- **Real-time Updates**: See player counts and lobby status
 
-```bash
-# create a new project in the current directory
-npx sv create
+### 🎨 Design
+- **Bullet Journal Style**: Hand-drawn aesthetic with cute doodles
+- **Responsive Design**: Works on desktop and mobile devices
+- **Smooth Animations**: Delightful hover effects and transitions
+- **Colorful Theme**: Vibrant colors with a cohesive palette
 
-# create a new project in my-app
-npx sv create my-app
+### 🛠 Technical Features
+- **TypeScript**: Full type safety
+- **SvelteKit**: Modern web framework
+- **Tailwind CSS**: Utility-first styling
+- **Socket.IO**: Real-time communication (ready for backend integration)
+
+## Getting Started
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+3. Open your browser to `http://localhost:5173`
+
+## Development
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run check` - Type check
+- `npm run format` - Format code
+
+## Project Structure
+
+```
+src/
+├── routes/
+│   ├── +layout.svelte    # Global layout with fonts
+│   ├── +page.svelte      # Main lobby interface
+│   └── game/
+│       ├── +page.svelte  # Game interface
+│       └── +page.ts      # Game logic
+├── app.css               # Global styles
+└── app.html              # HTML template
 ```
 
-## Developing
+## Lobby Flow
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+1. **Main Menu** → Choose "Join" or "Create"
+2. **Join Path**:
+   - Select "Public" to browse open lobbies
+   - Select "Private" to enter a lobby code
+3. **Create Path**:
+   - Generate unique lobby code
+   - Share code with friends
+   - Start game when ready
 
-```bash
-npm run dev
+## Future Enhancements
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```bash
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+- [ ] Real-time lobby updates
+- [ ] Player avatars and names
+- [ ] Lobby chat functionality
+- [ ] Game settings and customization
+- [ ] Persistent user accounts

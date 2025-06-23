@@ -3,12 +3,12 @@ set -e
 
 echo "Starting Svelte client..."
 cd client
-npm run dev -- --port 80 --host 0.0.0.0 &
+npm run dev -- --port 5173
 
-CLIENT_PID=$!
+# CLIENT_PID=$!
 
-echo "Starting Node.js server..."
-cd ../server
-node index.js
+# echo "Starting Node.js server..."
+# cd ../server
+# node index.js
 
-kill $CLIENT_PID
+# kill $CLIENT_PID
