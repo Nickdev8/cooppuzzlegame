@@ -1,6 +1,6 @@
-# Physics Engine
+# Collaborative Puzzle Game
 
-A shared physics engine built with Svelte, Node.js, Matter.js, and Socket.IO.
+A shared puzzle game built with Svelte, Node.js, and Socket.IO.
 
 ## Features
 
@@ -8,25 +8,41 @@ A shared physics engine built with Svelte, Node.js, Matter.js, and Socket.IO.
 - **Bullet Journal Style**: Paper texture background with grid lines and margins
 - **Multiplayer Support**: Real-time collaboration with other players
 - **Player Identification**: Each player gets a unique color hue and name display
-- **Drag & Drop Physics**: Interactive objects that can be dragged and manipulated
+- **Interactive Buttons**: Two buttons that can be pressed by different players
+- **Light Bulb Puzzle**: Light bulb turns on when both buttons are pressed simultaneously
 - **Optimized Performance**: Reduced to 30 FPS for Raspberry Pi 4 compatibility
 - **Responsive Design**: Scales to fit any screen size while maintaining aspect ratio
 
 ## How to Use
 
 1. **Join a Lobby**: Create or join a lobby from the main page
-2. **Access Physics Engine**: Click the "⚡ Physics Engine" button in the lobby
-3. **Interact**: 
+2. **Start the Game**: Click "Start Game" in the lobby (host only)
+3. **Solve the Puzzle**: 
    - Move your mouse to see your cursor (with unique color)
-   - Click and drag objects to move them
-   - See other players' cursors and names
-   - Watch real-time physics simulation
+   - Click and hold on Button 1
+   - Have another player click and hold on Button 2
+   - When both buttons are pressed, the light bulb will turn on
+   - See other players' cursors and names in real-time
+
+## Game Mechanics
+
+### Button System
+- **Button 1**: Can be pressed by any player
+- **Button 2**: Can be pressed by any player
+- **Light Bulb**: Turns on only when both buttons are pressed simultaneously
+- **Collaboration Required**: Players must work together to solve the puzzle
+
+### Visual Feedback
+- Buttons change color when pressed (blue → red)
+- Light bulb glows yellow when both buttons are active
+- Player cursors show unique colors for easy identification
+- Real-time status updates for all players
 
 ## Technical Details
 
 ### Performance Optimizations
 - Frame rate limited to 30 FPS for Raspberry Pi 4
-- Efficient sprite caching for images
+- Efficient canvas rendering
 - Optimized socket communication
 - Reduced state update frequency
 
@@ -36,26 +52,27 @@ A shared physics engine built with Svelte, Node.js, Matter.js, and Socket.IO.
 - Margin lines for organization
 - Player cursors with unique colors
 - Player names displayed above cursors
+- Smooth button animations and visual feedback
 
-### Physics Features
-- Matter.js physics engine
-- Real-time collision detection
-- Drag constraints for smooth interaction
-- Respawn system for objects that fall off screen
-- Anchored objects with fixed points
+### Game Features
+- Real-time multiplayer interaction
+- Button state synchronization
+- Light bulb logic with visual effects
+- Player tracking and identification
+- Responsive canvas scaling
 
 ## File Structure
 
 ```
 client/src/routes/physics/
-├── +page.svelte          # Main physics engine component
+├── +page.svelte          # Main puzzle game component
 └── README.md             # This documentation
 ```
 
 ## Dependencies
 
 - **Frontend**: Svelte, Socket.IO Client
-- **Backend**: Node.js, Express, Socket.IO, Matter.js
+- **Backend**: Node.js, Express, Socket.IO
 - **Styling**: Tailwind CSS, Custom CSS
 
 ## Browser Support

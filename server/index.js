@@ -339,6 +339,13 @@ class GameRoom {
     io.to(this.lobbyCode).emit('buttonState', state);
     console.log(`[GameRoom:${this.lobbyCode}] Button state:`, state);
   }
+
+  handleGridPointToggle(socketId, { x, y, isActive }) {
+    console.log(`[GameRoom:${this.lobbyCode}] Grid point toggle at (${x}, ${y}) to ${isActive}`);
+    
+    // Broadcast the grid point update to all players
+    io.to(this.lobbyCode).emit('gridPointUpdate', { x, y, isActive });
+  }
 }
 
 // ─── GAME ROOM MANAGEMENT ───────────────────────────────────────────────
@@ -422,6 +429,13 @@ io.on('connection', (socket) => {
   socket.on('buttonPress', (data) => {
     if (currentGameRoom) {
       currentGameRoom.handleButtonPress(socket.id, data);
+    }
+  });
+
+  // Handle grid point toggle events
+  socket.on('gridPointToggle', (data) => {
+    if (currentGameRoom) {
+      currentGameRoom.handleGridPointToggle(socket.id, data);
     }
   });
 

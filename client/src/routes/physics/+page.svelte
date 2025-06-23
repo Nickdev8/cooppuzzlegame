@@ -36,6 +36,12 @@
 
 	let canvasWidth = 1920;
 	let canvasHeight = 1080;
+	let containerWidth = 0;
+	let containerHeight = 0;
+	let scaleX = 1;
+	let scaleY = 1;
+	let offsetX = 0;
+	let offsetY = 0;
 
 	// Game state
 	let button1Pressed = false;
@@ -49,6 +55,9 @@
 	let button2 = { x: 800, y: 600, width: 120, height: 80, radius: 60 };
 	let lightBulb = { x: 600, y: 300, width: 100, height: 100, radius: 50 };
 
+	// Bullet journal grid points
+	let gridPoints: Array<{ x: number; y: number; radius: number; isActive: boolean }> = [];
+
 	let lastDrawTime = 0;
 	const targetFPS = 30;
 	const frameInterval = 1000 / targetFPS;
@@ -56,17 +65,54 @@
 
 	const log = (...args: any[]) => console.log(...args);
 
+	function createBulletJournalGrid() {
+		gridPoints = [];
+		const spacing = 80;
+		const margin = 150;
+		
+		for (let x = margin; x < canvasWidth - margin; x += spacing) {
+			for (let y = margin; y < canvasHeight - margin; y += spacing) {
+				// Skip points where buttons and light bulb are
+				const skipButton1 = Math.abs(x - button1.x) < 100 && Math.abs(y - button1.y) < 100;
+				const skipButton2 = Math.abs(x - button2.x) < 100 && Math.abs(y - button2.y) < 100;
+				const skipLightBulb = Math.abs(x - lightBulb.x) < 100 && Math.abs(y - lightBulb.y) < 100;
+				
+				if (!skipButton1 && !skipButton2 && !skipLightBulb) {
+					gridPoints.push({
+						x: x + (Math.random() - 0.5) * 20, // Add some randomness
+						y: y + (Math.random() - 0.5) * 20,
+						radius: 3 + Math.random() * 2,
+						isActive: false
+					});
+				}
+			}
+		}
+	}
+
+	function screenToCanvas(screenX: number, screenY: number) {
+		return {
+			x: (screenX - offsetX) / scaleX,
+			y: (screenY - offsetY) / scaleY
+		};
+	}
+
+	function canvasToScreen(canvasX: number, canvasY: number) {
+		return {
+			x: canvasX * scaleX + offsetX,
+			y: canvasY * scaleY + offsetY
+		};
+	}
+
 	function handleWindowMousemove(e: MouseEvent): void {
 		if (!canvas) return;
 		const rect = canvas.getBoundingClientRect();
-		const scaleX = canvas.width / rect.width;
-		const scaleY = canvas.height / rect.height;
-		const x = (e.clientX - rect.left) * scaleX;
-		const y = (e.clientY - rect.top) * scaleY;
+		const x = e.clientX - rect.left;
+		const y = e.clientY - rect.top;
+		const canvasPos = screenToCanvas(x, y);
 
 		try {
-			if (x >= 0 && y >= 0 && x <= canvas.width && y <= canvas.height) {
-				socket.emit('movemouse', { x, y });
+			if (canvasPos.x >= 0 && canvasPos.y >= 0 && canvasPos.x <= canvasWidth && canvasPos.y <= canvasHeight) {
+				socket.emit('movemouse', { x: canvasPos.x, y: canvasPos.y });
 			} else {
 				socket.emit('mouseLeave');
 			}
@@ -81,14 +127,13 @@
 
 	function handleCanvasMousedown(e: MouseEvent): void {
 		const rect = canvas.getBoundingClientRect();
-		const scaleX = canvas.width / rect.width;
-		const scaleY = canvas.height / rect.height;
-		const mx = (e.clientX - rect.left) * scaleX;
-		const my = (e.clientY - rect.top) * scaleY;
+		const x = e.clientX - rect.left;
+		const y = e.clientY - rect.top;
+		const canvasPos = screenToCanvas(x, y);
 
 		// Check if clicking on button 1
-		const dx1 = mx - button1.x;
-		const dy1 = my - button1.y;
+		const dx1 = canvasPos.x - button1.x;
+		const dy1 = canvasPos.y - button1.y;
 		if (dx1 * dx1 + dy1 * dy1 <= button1.radius * button1.radius) {
 			if (socket.id && !button1PressedBy.includes(socket.id)) {
 				button1PressedBy.push(socket.id);
@@ -98,8 +143,8 @@
 		}
 
 		// Check if clicking on button 2
-		const dx2 = mx - button2.x;
-		const dy2 = my - button2.y;
+		const dx2 = canvasPos.x - button2.x;
+		const dy2 = canvasPos.y - button2.y;
 		if (dx2 * dx2 + dy2 * dy2 <= button2.radius * button2.radius) {
 			if (socket.id && !button2PressedBy.includes(socket.id)) {
 				button2PressedBy.push(socket.id);
@@ -107,18 +152,28 @@
 				socket.emit('buttonPress', { button: 2, pressed: true, playerId: socket.id });
 			}
 		}
+
+		// Check if clicking on grid points
+		for (const point of gridPoints) {
+			const dx = canvasPos.x - point.x;
+			const dy = canvasPos.y - point.y;
+			if (dx * dx + dy * dy <= point.radius * 4) {
+				point.isActive = !point.isActive;
+				socket.emit('gridPointToggle', { x: point.x, y: point.y, isActive: point.isActive });
+				break;
+			}
+		}
 	}
 
 	function handleCanvasMouseup(e: MouseEvent): void {
 		const rect = canvas.getBoundingClientRect();
-		const scaleX = canvas.width / rect.width;
-		const scaleY = canvas.height / rect.height;
-		const mx = (e.clientX - rect.left) * scaleX;
-		const my = (e.clientY - rect.top) * scaleY;
+		const x = e.clientX - rect.left;
+		const y = e.clientY - rect.top;
+		const canvasPos = screenToCanvas(x, y);
 
 		// Check if releasing button 1
-		const dx1 = mx - button1.x;
-		const dy1 = my - button1.y;
+		const dx1 = canvasPos.x - button1.x;
+		const dy1 = canvasPos.y - button1.y;
 		if (dx1 * dx1 + dy1 * dy1 <= button1.radius * button1.radius) {
 			if (socket.id) {
 				button1PressedBy = button1PressedBy.filter(id => id !== socket.id);
@@ -128,8 +183,8 @@
 		}
 
 		// Check if releasing button 2
-		const dx2 = mx - button2.x;
-		const dy2 = my - button2.y;
+		const dx2 = canvasPos.x - button2.x;
+		const dy2 = canvasPos.y - button2.y;
 		if (dx2 * dx2 + dy2 * dy2 <= button2.radius * button2.radius) {
 			if (socket.id) {
 				button2PressedBy = button2PressedBy.filter(id => id !== socket.id);
@@ -149,18 +204,32 @@
 
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+		// Draw black bars for aspect ratio
+		ctx.fillStyle = '#000000';
+		if (offsetX > 0) {
+			ctx.fillRect(0, 0, offsetX, canvas.height);
+			ctx.fillRect(canvas.width - offsetX, 0, offsetX, canvas.height);
+		}
+		if (offsetY > 0) {
+			ctx.fillRect(0, 0, canvas.width, offsetY);
+			ctx.fillRect(0, canvas.height - offsetY, canvas.width, offsetY);
+		}
+
 		// Draw bullet journal style background
 		drawBulletJournalBackground();
+
+		// Draw grid points
+		drawGridPoints();
 
 		// Draw title
 		ctx.save();
 		ctx.fillStyle = '#2c3e50';
 		ctx.font = 'bold 48px "Comic Neue", cursive';
 		ctx.textAlign = 'center';
-		ctx.fillText('Collaborative Puzzle', canvas.width / 2, 120);
+		ctx.fillText('Collaborative Puzzle', canvasWidth / 2, 120);
 		ctx.font = '24px "Comic Neue", cursive';
 		ctx.fillStyle = '#7f8c8d';
-		ctx.fillText('Press both buttons together to light the bulb', canvas.width / 2, 160);
+		ctx.fillText('Press both buttons together to light the bulb', canvasWidth / 2, 160);
 		ctx.restore();
 
 		// Draw button 1
@@ -212,24 +281,24 @@
 	function drawBulletJournalBackground(): void {
 		// Draw paper texture background
 		ctx.fillStyle = '#f8f6f1';
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
 		// Draw subtle grid lines
 		ctx.strokeStyle = '#e8e4d9';
 		ctx.lineWidth = 1;
 		const gridSize = 50;
 
-		for (let x = 0; x <= canvas.width; x += gridSize) {
+		for (let x = 0; x <= canvasWidth; x += gridSize) {
 			ctx.beginPath();
 			ctx.moveTo(x, 0);
-			ctx.lineTo(x, canvas.height);
+			ctx.lineTo(x, canvasHeight);
 			ctx.stroke();
 		}
 
-		for (let y = 0; y <= canvas.height; y += gridSize) {
+		for (let y = 0; y <= canvasHeight; y += gridSize) {
 			ctx.beginPath();
 			ctx.moveTo(0, y);
-			ctx.lineTo(canvas.width, y);
+			ctx.lineTo(canvasWidth, y);
 			ctx.stroke();
 		}
 
@@ -241,14 +310,48 @@
 		// Left margin
 		ctx.beginPath();
 		ctx.moveTo(margin, 0);
-		ctx.lineTo(margin, canvas.height);
+		ctx.lineTo(margin, canvasHeight);
 		ctx.stroke();
 
 		// Top margin
 		ctx.beginPath();
 		ctx.moveTo(0, margin);
-		ctx.lineTo(canvas.width, margin);
+		ctx.lineTo(canvasWidth, margin);
 		ctx.stroke();
+	}
+
+	function drawGridPoints(): void {
+		for (const point of gridPoints) {
+			ctx.save();
+			
+			if (point.isActive) {
+				// Active point - glowing effect
+				const gradient = ctx.createRadialGradient(
+					point.x, point.y, 0,
+					point.x, point.y, point.radius * 3
+				);
+				gradient.addColorStop(0, '#f1c40f');
+				gradient.addColorStop(1, 'rgba(241, 196, 15, 0)');
+				ctx.fillStyle = gradient;
+				ctx.beginPath();
+				ctx.arc(point.x, point.y, point.radius * 3, 0, Math.PI * 2);
+				ctx.fill();
+				
+				ctx.fillStyle = '#f39c12';
+			} else {
+				ctx.fillStyle = '#bdc3c7';
+			}
+			
+			ctx.beginPath();
+			ctx.arc(point.x, point.y, point.radius, 0, Math.PI * 2);
+			ctx.fill();
+			
+			ctx.strokeStyle = '#2c3e50';
+			ctx.lineWidth = 1;
+			ctx.stroke();
+			
+			ctx.restore();
+		}
 	}
 
 	function drawButton(button: any, pressed: boolean, label: string): void {
@@ -365,18 +468,45 @@
 		ctx.restore();
 	}
 
+	function updateCanvasSize(): void {
+		if (!canvas) return;
+		
+		const container = canvas.parentElement;
+		if (!container) return;
+		
+		containerWidth = container.clientWidth;
+		containerHeight = container.clientHeight;
+		
+		// Calculate scale to maintain 1920x1080 aspect ratio
+		const containerScaleX = containerWidth / canvasWidth;
+		const containerScaleY = containerHeight / canvasHeight;
+		const scale = Math.min(containerScaleX, containerScaleY);
+		
+		// Set canvas display size
+		canvas.style.width = `${canvasWidth * scale}px`;
+		canvas.style.height = `${canvasHeight * scale}px`;
+		
+		// Calculate offsets for centering
+		offsetX = (containerWidth - canvasWidth * scale) / 2;
+		offsetY = (containerHeight - canvasHeight * scale) / 2;
+		
+		// Update scale factors for coordinate conversion
+		scaleX = scale;
+		scaleY = scale;
+	}
+
 	onMount(() => {
 		log('[onMount] initializing puzzle game');
 
 		canvas.width = canvasWidth;
 		canvas.height = canvasHeight;
-		canvas.style.width = '100%';
-		canvas.style.height = 'auto';
 
 		cursorImg = new Image();
 		cursorImg.src = '/images/cursor.svg';
 		cursorImg.onload = () => {
 			console.log('Cursor SVG loaded');
+			createBulletJournalGrid();
+			updateCanvasSize();
 			draw();
 		};
 
@@ -443,6 +573,14 @@
 			lightBulbOn = payload.lightBulbOn;
 		});
 
+		// Handle grid point updates
+		socket.on('gridPointUpdate', (payload: { x: number, y: number, isActive: boolean }) => {
+			const point = gridPoints.find(p => Math.abs(p.x - payload.x) < 5 && Math.abs(p.y - payload.y) < 5);
+			if (point) {
+				point.isActive = payload.isActive;
+			}
+		});
+
 		socket.on('mouseMoved', (payload: { id: string; x: number; y: number }) => {
 			const { id, x, y } = payload;
 
@@ -465,12 +603,14 @@
 
 		window.addEventListener('mousemove', handleWindowMousemove);
 		window.addEventListener('mouseleave', handleWindowMouseleave);
+		window.addEventListener('resize', updateCanvasSize);
 	});
 
 	onDestroy(() => {
 		log('[onDestroy] cleaning up');
 		window.removeEventListener('mousemove', handleWindowMousemove);
 		window.removeEventListener('mouseleave', handleWindowMouseleave);
+		window.removeEventListener('resize', updateCanvasSize);
 		
 		if (animationFrameId) {
 			cancelAnimationFrame(animationFrameId);
@@ -522,17 +662,17 @@
 		width: 100vw;
 		position: relative;
 		overflow: hidden;
-		background: linear-gradient(135deg, #f8f6f1 0%, #e8e4d9 100%);
+		background: #000000;
+		display: flex;
+		justify-content: center;
+		align-items: center;
 	}
 
 	canvas {
 		background-color: #f8f6f1;
-		width: 100%;
-		height: auto;
-		max-height: 100vh;
 		display: block;
 		border-radius: 8px;
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 	}
 	
 	.lobby-indicator {
