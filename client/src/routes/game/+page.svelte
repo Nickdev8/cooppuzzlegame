@@ -260,6 +260,7 @@
 			payload.bodies.forEach((o) => (objects[o.id] = o));
 
 			anchors = payload.anchors;
+			log('Socket state received', payload);
 
 			draw();
 		});
