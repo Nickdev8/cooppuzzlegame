@@ -31,65 +31,75 @@
   {
     "id": "ball2",
     "type": "circle",
-    "x": 300,
-    "y": 20,
     "radius": 20,
     "mass": 0.002,
     "restitution": 0.9,
     "friction": 0.05,
     "image": "/images/ball.png",
     "width": 40,
-    "height": 40
+    "height": 40,
+    "screen": {
+      "xPercent": 0.15,
+      "yPercent": 0.02
+    }
   },
   {
     "id": "ball3",
     "type": "circle",
-    "x": 400,
-    "y": 20,
     "radius": 20,
     "mass": 0.002,
     "restitution": 0.9,
     "friction": 0.05,
     "image": "/images/ball.png",
     "width": 40,
-    "height": 40
+    "height": 40,
+    "screen": {
+      "xPercent": 0.2,
+      "yPercent": 0.02
+    }
   },
   {
     "id": "ball4",
     "type": "circle",
-    "x": 500,
-    "y": 20,
     "radius": 20,
     "mass": 0.002,
     "restitution": 0.9,
     "friction": 0.05,
     "image": "/images/ball.png",
     "width": 40,
-    "height": 40
+    "height": 40,
+    "screen": {
+      "xPercent": 0.25,
+      "yPercent": 0.02
+    }
   },
   {
     "id": "ball5",
     "type": "circle",
-    "x": 600,
-    "y": 20,
     "radius": 20,
     "mass": 0.002,
     "restitution": 0.9,
     "friction": 0.05,
     "image": "/images/ball.png",
     "width": 40,
-    "height": 40
+    "height": 40,
+    "screen": {
+      "xPercent": 0.3,
+      "yPercent": 0.02
+    }
   },
   {
     "id": "box1",
     "type": "rectangle",
-    "x": 800,
-    "y": 30,
     "width": 60,
     "height": 60,
     "mass": 0.005,
     "restitution": 0.3,
     "friction": 0.1,
-    "image": "/images/box.png"
+    "image": "/images/box.png",
+    "screen": {
+      "xPercent": 0.4,
+      "yPercent": 0.03
+    }
   }
 ]

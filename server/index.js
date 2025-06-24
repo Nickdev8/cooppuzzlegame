@@ -25,6 +25,13 @@ const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODI
 // Global lobby for unlimited players
 let globalLobby = null;
 
+// Clear existing lobbies to ensure new canvas dimensions are used
+function clearExistingLobbies() {
+  lobbies.clear();
+  globalLobby = null;
+  console.log('Cleared existing lobbies to use new canvas dimensions (2048x1024)');
+}
+
 function createGlobalLobby() {
   if (!globalLobby) {
     globalLobby = createLobbyWorld('GLOBAL');
@@ -218,7 +225,10 @@ setInterval(() => {
     for (const b of lobbyWorld.DYNAMIC_BODIES) {
       // Only respawn objects that aren't being dragged
       if (!draggedObjects.has(b.label) && b.position.y > floorY + RESPAWN_MARGIN) {
-        Body.setPosition(b, { x: 300, y: 20 });
+        // Respawn at 15% from left, 2% from top of canvas
+        const respawnX = lobbyWorld.canvasSize.width * 0.15;
+        const respawnY = lobbyWorld.canvasSize.height * 0.02;
+        Body.setPosition(b, { x: respawnX, y: respawnY });
         Body.setVelocity(b, { x: 0, y: 0 });
         Body.setAngularVelocity(b, 0);
         Body.setAngle(b, 0);
@@ -256,7 +266,10 @@ setInterval(() => {
     for (const b of globalLobby.DYNAMIC_BODIES) {
       // Only respawn objects that aren't being dragged
       if (!draggedObjects.has(b.label) && b.position.y > floorY + RESPAWN_MARGIN) {
-        Body.setPosition(b, { x: 300, y: 20 });
+        // Respawn at 15% from left, 2% from top of canvas
+        const respawnX = globalLobby.canvasSize.width * 0.15;
+        const respawnY = globalLobby.canvasSize.height * 0.02;
+        Body.setPosition(b, { x: respawnX, y: respawnY });
         Body.setVelocity(b, { x: 0, y: 0 });
         Body.setAngularVelocity(b, 0);
         Body.setAngle(b, 0);
@@ -289,4 +302,7 @@ app.get('/api/global-player-count', (req, res) => {
   res.json({ count });
 });
 
-server.listen(3080, () => console.log('Server on https://iotservice.nl:3080'));
+server.listen(3080, () => {
+  console.log('Server on https://iotservice.nl:3080');
+  clearExistingLobbies(); // Clear existing lobbies to use new canvas dimensions
+});
