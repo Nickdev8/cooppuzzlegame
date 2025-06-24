@@ -40,7 +40,7 @@ function getGlobalLobby() {
 function createLobbyWorld(lobbyCode) {
   const engine = Engine.create();
   const world = engine.world;
-  let canvasSize = { width: 1920, height: 1080 };
+  let canvasSize = { width: 1920, height: 96 };
   let walls = { left: null, right: null, bottom: null };
   let anchoredBodies = [];
   let bodies = [], DYNAMIC_BODIES = [];
@@ -211,7 +211,7 @@ setInterval(() => {
     for (const b of lobbyWorld.DYNAMIC_BODIES) {
       // Only respawn objects that aren't being dragged
       if (!draggedObjects.has(b.label) && b.position.y > floorY + RESPAWN_MARGIN) {
-        Body.setPosition(b, { x: 300, y: 100 });
+        Body.setPosition(b, { x: 300, y: 20 });
         Body.setVelocity(b, { x: 0, y: 0 });
         Body.setAngularVelocity(b, 0);
         Body.setAngle(b, 0);
@@ -248,7 +248,7 @@ setInterval(() => {
     for (const b of globalLobby.DYNAMIC_BODIES) {
       // Only respawn objects that aren't being dragged
       if (!draggedObjects.has(b.label) && b.position.y > floorY + RESPAWN_MARGIN) {
-        Body.setPosition(b, { x: 300, y: 100 });
+        Body.setPosition(b, { x: 300, y: 20 });
         Body.setVelocity(b, { x: 0, y: 0 });
         Body.setAngularVelocity(b, 0);
         Body.setAngle(b, 0);

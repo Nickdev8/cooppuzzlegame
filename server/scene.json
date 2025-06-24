@@ -15,7 +15,7 @@
     },
     "offset": {
       "x": 10,
-      "y": 20
+      "y": 10
     },
     "fixedPoints": [
       {
@@ -32,7 +32,7 @@
     "id": "ball2",
     "type": "circle",
     "x": 300,
-    "y": 100,
+    "y": 20,
     "radius": 20,
     "mass": 0.002,
     "restitution": 0.9,
@@ -44,8 +44,8 @@
   {
     "id": "ball3",
     "type": "circle",
-    "x": 300,
-    "y": 100,
+    "x": 400,
+    "y": 20,
     "radius": 20,
     "mass": 0.002,
     "restitution": 0.9,
@@ -57,8 +57,8 @@
   {
     "id": "ball4",
     "type": "circle",
-    "x": 300,
-    "y": 100,
+    "x": 500,
+    "y": 20,
     "radius": 20,
     "mass": 0.002,
     "restitution": 0.9,
@@ -70,8 +70,8 @@
   {
     "id": "ball5",
     "type": "circle",
-    "x": 300,
-    "y": 100,
+    "x": 600,
+    "y": 20,
     "radius": 20,
     "mass": 0.002,
     "restitution": 0.9,
@@ -83,8 +83,8 @@
   {
     "id": "box1",
     "type": "rectangle",
-    "x": 500,
-    "y": 150,
+    "x": 800,
+    "y": 30,
     "width": 60,
     "height": 60,
     "mass": 0.005,

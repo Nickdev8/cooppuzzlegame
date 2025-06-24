@@ -493,13 +493,19 @@
       : `${window.location.protocol}//${window.location.host}`;
     
     fetch(`${physicsUrl}/api/global-player-count`)
-      .then(response => response.json())
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+      })
       .then(data => {
         globalPlayerCount = data.count || 0;
+        console.log('🌍 [DEBUG] Updated global player count:', globalPlayerCount);
       })
       .catch(err => {
-        console.log('Using simulated global player count');
-        // Simulate some players for demo purposes
+        console.warn('⚠️ [DEBUG] Failed to fetch global player count:', err);
+        // Use a fallback count for demo purposes
         globalPlayerCount = Math.floor(Math.random() * 50) + 10;
       });
   }
@@ -580,6 +586,12 @@
         <div class="doodle doodle-4">💡</div>
         <div class="doodle doodle-5">🎨</div>
         <div class="doodle doodle-6">📝</div> -->
+      </div>
+      
+      <!-- Total players online counter -->
+      <div class="total-players-counter">
+        <span class="counter-icon">🌍</span>
+        <span class="counter-text">{globalPlayerCount} players online</span>
       </div>
     </div>
   {/if}
@@ -1834,6 +1846,45 @@
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+  
+  /* Total players counter */
+  .total-players-counter {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 2px solid #4ecdc4;
+    border-radius: 25px;
+    padding: 10px 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Comic Neue', cursive;
+    font-weight: 600;
+    color: #4ecdc4;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    z-index: 100;
+  }
+  
+  .counter-icon {
+    font-size: 1.2rem;
+  }
+  
+  .counter-text {
+    font-size: 0.9rem;
+  }
+  
+  @media (max-width: 600px) {
+    .total-players-counter {
+      bottom: 10px;
+      right: 10px;
+      padding: 8px 12px;
+    }
+    
+    .counter-text {
+      font-size: 0.8rem;
     }
   }
 </style>

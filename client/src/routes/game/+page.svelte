@@ -36,7 +36,7 @@
 	let mousePositions: MousePositionsMap = {};
 
 	let canvasWidth = 1920;
-	let canvasHeight = 1080;
+	let canvasHeight = 96;
 	let objects: Record<string, BodyState> = {};
 
 	let dragging = false;
@@ -300,9 +300,9 @@
 	onMount(() => {
 		log('[onMount] initializing');
 
-		// Set canvas to 16:9 aspect ratio (1920x1080)
+		// Set canvas to 20:1 aspect ratio (1920x96)
 		canvasWidth = 1920;
-		canvasHeight = 1080; // 16:9 ratio
+		canvasHeight = 96; // 20:1 ratio
 		canvas.width = canvasWidth;
 		canvas.height = canvasHeight;
 		canvas.style.width = '100%';
@@ -440,29 +440,37 @@
 		align-items: center;
 		justify-content: center;
 		overflow: hidden;
+		margin: 0;
+		padding: 0;
 	}
 
 	.canvas-wrapper {
 		position: relative;
 		width: 100%;
-		aspect-ratio: 16 / 9;
-		max-width: 100vw;
+		height: 100vh;
 		display: flex;
 		justify-content: center;
 		align-items: center;
+		padding: 20px;
+		box-sizing: border-box;
+		overflow: hidden;
 	}
 
 	canvas {
 		background-color: #f8f6f0;
-		width: 100%;
+		max-width: calc(100vw - 40px);
+		max-height: calc(100vh - 40px);
+		width: auto;
 		height: auto;
-		max-height: 50vh;
 		display: block;
 		border: 3px solid #8b7355;
 		border-radius: 15px;
 		box-shadow: 
 			0 10px 30px rgba(0,0,0,0.2),
 			0 0 0 1px rgba(139, 115, 85, 0.3);
+		/* Maintain 20:1 aspect ratio */
+		aspect-ratio: 20 / 1;
+		object-fit: contain;
 	}
 
 	.ui-overlay {
