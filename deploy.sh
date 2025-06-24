@@ -1,4 +1,6 @@
 #!/bin/bash
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
 set -euo pipefail
 
 # Make sure this script is executable: chmod +x deploy.sh
