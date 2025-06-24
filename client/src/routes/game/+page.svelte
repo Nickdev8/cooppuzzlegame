@@ -231,8 +231,8 @@
 			ctx.filter = `hue-rotate(${hue}deg)`;
 			ctx.drawImage(
 				cursorImg,
-				pos.x - cursorSize / 2,
-				pos.y - cursorSize / 2,
+				pos.x - 14, // Hotspot X offset
+				pos.y - 8,  // Hotspot Y offset
 				cursorSize,
 				cursorSize
 			);

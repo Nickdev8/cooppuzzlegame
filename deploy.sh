@@ -178,12 +178,6 @@ check_exit_status $? "PM2 log flush"
 echo_debug "Current PM2 processes:"
 pm2 list
 
-# echo_debug "PM2 logs for escape-room-server:"
-# pm2 logs escape-room-server --lines 5 --nostream
-
-# echo_debug "PM2 logs for escape-room-lobby:"
-# pm2 logs escape-room-lobby --lines 5 --nostream
-
 # Reload nginx
 echo_info "=== Testing and Reloading Nginx ==="
 echo_debug "Testing nginx configuration..."
