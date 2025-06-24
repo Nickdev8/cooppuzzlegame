@@ -40,6 +40,7 @@
   // Global server state
   let globalPlayerCount = 0;
   let globalServerSocket: Socket | null = null;
+  let isConnectingToGlobal = false; // Add loading state for global server connection
   
   console.log('🔧 [DEBUG] Component initialized with initial state:', {
     currentView,
@@ -238,6 +239,15 @@
       console.log('🛑 [DEBUG] Socket disconnected');
     }
     
+    // Clean up global server socket
+    if (globalServerSocket) {
+      globalServerSocket.disconnect();
+      console.log('🛑 [DEBUG] Global server socket disconnected');
+    }
+    
+    // Reset loading state
+    isConnectingToGlobal = false;
+    
     // Clean up keyboard handler
     if (keyboardHandler) {
       document.removeEventListener('keydown', keyboardHandler);
@@ -387,6 +397,7 @@
       showUsernameEntry = false;
       if (pendingLobbyCode === 'GLOBAL') {
         // Join global server
+        isConnectingToGlobal = true; // Set loading state
         handleJoinGlobalServer();
         pendingLobbyCode = '';
       } else if (pendingLobbyCode) {
@@ -455,6 +466,9 @@
       return;
     }
     
+    // Set loading state
+    isConnectingToGlobal = true;
+    
     // Connect to the physics server directly for global lobby
     const physicsUrl = window.location.hostname === 'localhost' 
       ? 'http://localhost:3080' 
@@ -472,16 +486,28 @@
     
     globalServerSocket.on('joinedPhysics', () => {
       console.log('✅ [DEBUG] Joined global physics lobby');
+      // Reset loading state
+      isConnectingToGlobal = false;
       // Redirect directly to the game with GLOBAL lobby
       window.location.href = '/game?lobby=GLOBAL';
     });
     
     globalServerSocket.on('connect_error', (err) => {
       console.error('🔥 [DEBUG] Global server connection error:', err);
+      // Reset loading state
+      isConnectingToGlobal = false;
       errorMessage = 'Failed to connect to global server';
       setTimeout(() => {
         errorMessage = '';
       }, 3000);
+    });
+    
+    globalServerSocket.on('disconnect', () => {
+      console.log('❌ [DEBUG] Disconnected from global physics server');
+      // Reset loading state if not successfully joined
+      if (isConnectingToGlobal) {
+        isConnectingToGlobal = false;
+      }
     });
   }
   
@@ -562,9 +588,15 @@
       </div>
       
       <div class="menu-options">
-        <button class="journal-button global-btn" on:click={handleJoinGlobalServer}>
+        <button class="journal-button global-btn" on:click={handleJoinGlobalServer} disabled={isConnectingToGlobal}>
           <span class="button-icon">🌍</span>
-          <span class="button-text">Join Global Server</span>
+          <span class="button-text">
+            {#if isConnectingToGlobal}
+              <span class="loading-spinner">⏳</span> Connecting...
+            {:else}
+              Join Global Server
+            {/if}
+          </span>
           <span class="button-subtitle">{globalPlayerCount} players online</span>
         </button>
         
@@ -623,9 +655,12 @@
           class="name-input"
           maxlength="20"
           on:keydown={(e) => e.key === 'Enter' && handleUsernameSubmit()}
+          disabled={isConnectingToGlobal}
         />
-        <button class="username-submit-btn" on:click={handleUsernameSubmit} disabled={!playerName.trim()}>
-          {#if pendingLobbyCode === 'GLOBAL'}
+        <button class="username-submit-btn" on:click={handleUsernameSubmit} disabled={!playerName.trim() || isConnectingToGlobal}>
+          {#if isConnectingToGlobal && pendingLobbyCode === 'GLOBAL'}
+            <span class="loading-spinner">⏳</span> Connecting...
+          {:else if pendingLobbyCode === 'GLOBAL'}
             Join Global Server
           {:else if pendingLobbyCode}
             Join Lobby
@@ -1043,6 +1078,19 @@
       5px 5px 0 rgba(0,0,0,0.1),
       0 0 0 1px rgba(0,0,0,0.05),
       0 8px 25px rgba(0,0,0,0.15);
+  }
+  
+  .journal-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+  
+  .journal-button:disabled:hover {
+    transform: none;
+    box-shadow: 
+      3px 3px 0 rgba(0,0,0,0.1),
+      0 0 0 1px rgba(0,0,0,0.05);
   }
   
   /* Add subtle hand-drawn border variation */
@@ -1886,5 +1934,16 @@
     .counter-text {
       font-size: 0.8rem;
     }
+  }
+  
+  /* Loading spinner animation */
+  .loading-spinner {
+    display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 </style>

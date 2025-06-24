@@ -314,6 +314,16 @@
 		canvas.style.width = '100%';
 		canvas.style.height = 'auto';
 
+		// Debug: Log canvas dimensions
+		setTimeout(() => {
+			const rect = canvas.getBoundingClientRect();
+			log('[onMount] Canvas dimensions:', {
+				internal: { width: canvas.width, height: canvas.height },
+				display: { width: rect.width, height: rect.height },
+				scale: { x: canvas.width / rect.width, y: canvas.height / rect.height }
+			});
+		}, 100);
+
 		// Extract lobby code from URL
 		const params = new URLSearchParams(window.location.search);
 		lobbyCode = params.get('lobby');
@@ -389,6 +399,9 @@
 		window.addEventListener('mousemove', handleWindowMousemove);
 		window.addEventListener('mouseleave', handleWindowMouseleave);
 		window.addEventListener('mouseup', handleWindowMouseup);
+		
+		// Add resize handler to debug canvas dimensions
+		window.addEventListener('resize', handleResize);
 	});
 
 	onDestroy(() => {
@@ -396,6 +409,7 @@
 		window.removeEventListener('mousemove', handleWindowMousemove);
 		window.removeEventListener('mouseleave', handleWindowMouseleave);
 		window.removeEventListener('mouseup', handleWindowMouseup);
+		window.removeEventListener('resize', handleResize);
 		socket.disconnect();
 	});
 
@@ -404,6 +418,19 @@
 		if (joinedPhysics) {
 			socket.emit(event, data);
 		}
+	}
+
+	// Debug function for canvas dimensions
+	function handleResize() {
+		if (!canvas) return;
+		setTimeout(() => {
+			const rect = canvas.getBoundingClientRect();
+			log('[resize] Canvas dimensions:', {
+				internal: { width: canvas.width, height: canvas.height },
+				display: { width: rect.width, height: rect.height },
+				scale: { x: canvas.width / rect.width, y: canvas.height / rect.height }
+			});
+		}, 100);
 	}
 </script>
 
@@ -460,13 +487,15 @@
 		padding: 20px;
 		box-sizing: border-box;
 		overflow: hidden;
+		/* Ensure the wrapper respects the 16:9 aspect ratio */
+		max-width: calc((100vh - 40px) * 16/9);
 	}
 
 	canvas {
 		background-color: #f8f6f0;
 		max-width: calc(100vw - 40px);
 		max-height: calc(100vh - 40px);
-		width: auto;
+		width: 100%;
 		height: auto;
 		display: block;
 		border: 3px solid #8b7355;
@@ -475,6 +504,7 @@
 			0 10px 30px rgba(0,0,0,0.2),
 			0 0 0 1px rgba(139, 115, 85, 0.3);
 		/* Maintain 16:9 aspect ratio */
+		aspect-ratio: 16/9;
 		object-fit: contain;
 	}
 
