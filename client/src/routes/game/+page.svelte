@@ -36,7 +36,7 @@
 	let mousePositions: MousePositionsMap = {};
 
 	let canvasWidth = 1920;
-	let canvasHeight = 96;
+	let canvasHeight = 1080; // 16:9 ratio
 	let objects: Record<string, BodyState> = {};
 
 	let dragging = false;
@@ -300,9 +300,9 @@
 	onMount(() => {
 		log('[onMount] initializing');
 
-		// Set canvas to 20:1 aspect ratio (1920x96)
+		// Set canvas to 16:9 aspect ratio (1920x1080)
 		canvasWidth = 1920;
-		canvasHeight = 96; // 20:1 ratio
+		canvasHeight = 1080; // 16:9 ratio
 		canvas.width = canvasWidth;
 		canvas.height = canvasHeight;
 		canvas.style.width = '100%';
@@ -468,8 +468,7 @@
 		box-shadow: 
 			0 10px 30px rgba(0,0,0,0.2),
 			0 0 0 1px rgba(139, 115, 85, 0.3);
-		/* Maintain 20:1 aspect ratio */
-		aspect-ratio: 20 / 1;
+		/* Maintain 16:9 aspect ratio */
 		object-fit: contain;
 	}
 
