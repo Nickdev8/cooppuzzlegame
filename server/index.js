@@ -186,9 +186,25 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('endDrag', () => {
+  socket.on('endDrag', ({ velocity }) => {
     if (!lobbyWorld) return;
     if (socket.dragData) {
+      // Apply throw velocity to the object
+      if (velocity && (velocity.x !== 0 || velocity.y !== 0)) {
+        const body = socket.dragData.body;
+        // Apply the throw velocity (convert from pixels/sec to Matter.js units)
+        Body.setVelocity(body, { 
+          x: velocity.x * 0.01, // Scale down for less powerful throws
+          y: velocity.y * 0.01 
+        });
+        console.log(`[throw] Applied velocity to ${body.label}: (${velocity.x.toFixed(1)}, ${velocity.y.toFixed(1)})`);
+      } else {
+        // No velocity or zero velocity - just stop the object
+        const body = socket.dragData.body;
+        Body.setVelocity(body, { x: 0, y: 0 });
+        console.log(`[throw] No velocity applied to ${body.label}, stopped object`);
+      }
+      
       // Clear drag data
       socket.dragData = null;
     }

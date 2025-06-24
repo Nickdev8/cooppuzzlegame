@@ -46,6 +46,11 @@
 	const RADIUS = 20;
 	let spriteCache: Record<string, HTMLImageElement> = {};
 
+	// Add mouse movement tracking for throwing
+	let lastMousePos = { x: 0, y: 0 };
+	let mouseVelocity = { x: 0, y: 0 };
+	let lastMouseTime = 0;
+
 	let lobbyCode: string | null = null;
 	let joinedPhysics = false;
 
@@ -79,8 +84,21 @@
 	function handleWindowMousemove(e: MouseEvent): void {
 		if (!canvas) return;
 		const { x, y } = transformMouseToCanvas(e.clientX, e.clientY);
+		const currentTime = performance.now();
 
-		log('handleWindowMousemove', { x, y, dragging });
+		// Calculate mouse velocity (pixels per second)
+		if (lastMouseTime > 0) {
+			const deltaTime = (currentTime - lastMouseTime) / 1000; // Convert to seconds
+			if (deltaTime > 0) {
+				mouseVelocity.x = (x - lastMousePos.x) / deltaTime;
+				mouseVelocity.y = (y - lastMousePos.y) / deltaTime;
+			}
+		}
+
+		lastMousePos = { x, y };
+		lastMouseTime = currentTime;
+
+		log('handleWindowMousemove', { x, y, dragging, velocity: mouseVelocity });
 		try {
 			if (x >= 0 && y >= 0 && x <= canvas.width && y <= canvas.height) {
 				safeEmit('movemouse', { x, y });
@@ -121,14 +139,24 @@
 	}
 
 	function handleWindowMouseup(): void {
-		log('handleWindowMouseup', { dragging, dragId });
+		log('handleWindowMouseup', { dragging, dragId, velocity: mouseVelocity });
 		if (dragging && dragId) {
+			// Calculate throw velocity (reduced power)
+			const throwVelocity = {
+				x: mouseVelocity.x * 0.3, // Reduce power to 30%
+				y: mouseVelocity.y * 0.3
+			};
+			
 			// Always release ownership of the object when dragging ends
 			ownedObjects.delete(dragId);
 			delete localObjectPositions[dragId];
-			safeEmit('endDrag');
+			safeEmit('endDrag', { velocity: throwVelocity });
 			dragging = false;
 			dragId = null;
+			
+			// Reset velocity tracking
+			mouseVelocity = { x: 0, y: 0 };
+			lastMouseTime = 0;
 		}
 	}
 
@@ -183,6 +211,12 @@
 				// Store the initial rotation to preserve it during dragging
 				const initialAngle = o.angle;
 				localObjectPositions[id] = { x: o.x, y: o.y, angle: initialAngle };
+				
+				// Initialize mouse tracking for throwing
+				lastMousePos = { x: mx, y: my };
+				lastMouseTime = performance.now();
+				mouseVelocity = { x: 0, y: 0 };
+				
 				log('   • startDrag on', id, { mx, my, dragOffset, width: o.width, height: o.height, initialAngle });
 				safeEmit('startDrag', { id, x: mx, y: my });
 				break;
