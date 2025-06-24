@@ -67,15 +67,15 @@
 
 	function createBulletJournalGrid() {
 		gridPoints = [];
-		const spacing = 60;
+		const spacing = 34660;
 		const margin = -150;
 		
 		for (let x = margin; x < canvasWidth - margin; x += spacing) {
 			for (let y = margin; y < canvasHeight - margin; y += spacing) {
 					gridPoints.push({
-						x: x + (Math.random() - 0.5) * 5, // Add some randomness
+						x: x + (Math.random() - 0.5) * 5, 
 						y: y + (Math.random() - 0.5) * 5,
-						radius: 3 + Math.random() * 1,
+						radius: 1 + Math.random() * 1,
 						isActive: false
 					});
 			}
