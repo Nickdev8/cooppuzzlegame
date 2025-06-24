@@ -158,34 +158,39 @@ io.on('connection', socket => {
     // Allow any client to drag any object - mark this object as owned by this client
     socket.ownedObjects.add(id);
     
-    // Create a new drag constraint for this client
-    const dragC = Constraint.create({ 
-      pointA: { x, y }, 
-      bodyB: entry.body, 
-      pointB: { x: 0, y: 0 }, 
-      stiffness: 0.1, 
-      damping: 0.02 
-    });
-    World.add(lobbyWorld.world, dragC);
+    // Store the initial angle to preserve rotation
+    const body = entry.body;
+    const initialAngle = body.angle;
+    socket.dragData = {
+      body: body,
+      initialAngle: initialAngle,
+      offsetX: x - body.position.x,
+      offsetY: y - body.position.y
+    };
     
-    // Store the drag constraint with the socket for later cleanup
-    socket.dragConstraint = dragC;
-    console.log(`Client ${socket.id} started dragging object ${id}`);
+    console.log(`Client ${socket.id} started dragging object ${id} with initial angle ${initialAngle.toFixed(3)}`);
   });
 
   socket.on('drag', ({ x, y }) => {
     if (!lobbyWorld) return;
-    if (socket.dragConstraint) {
-      socket.dragConstraint.pointA.x = x;
-      socket.dragConstraint.pointA.y = y;
+    if (socket.dragData) {
+      // Calculate new position based on mouse and stored offset
+      const newX = x - socket.dragData.offsetX;
+      const newY = y - socket.dragData.offsetY;
+      
+      // Directly set position and preserve initial rotation
+      Body.setPosition(socket.dragData.body, { x: newX, y: newY });
+      Body.setAngle(socket.dragData.body, socket.dragData.initialAngle);
+      Body.setAngularVelocity(socket.dragData.body, 0);
+      Body.setVelocity(socket.dragData.body, { x: 0, y: 0 });
     }
   });
 
   socket.on('endDrag', () => {
     if (!lobbyWorld) return;
-    if (socket.dragConstraint) {
-      World.remove(lobbyWorld.world, socket.dragConstraint);
-      socket.dragConstraint = null;
+    if (socket.dragData) {
+      // Clear drag data
+      socket.dragData = null;
     }
     // Clear ownership when drag ends
     socket.ownedObjects.clear();
@@ -245,10 +250,9 @@ io.on('connection', socket => {
 
   socket.on('disconnect', () => {
     if (lobbyWorld) {
-      // Clean up any drag constraints
-      if (socket.dragConstraint) {
-        World.remove(lobbyWorld.world, socket.dragConstraint);
-        socket.dragConstraint = null;
+      // Clean up any drag data
+      if (socket.dragData) {
+        socket.dragData = null;
       }
       
       lobbyWorld.sockets.delete(socket);
@@ -288,15 +292,6 @@ setInterval(() => {
         Body.setVelocity(b, { x: 0, y: 0 });
         Body.setAngularVelocity(b, 0);
         Body.setAngle(b, 0);
-      }
-      
-      // Prevent rotation for objects being dragged
-      if (draggedObjects.has(b.label)) {
-        // Freeze rotation by setting angular velocity to 0
-        Body.setAngularVelocity(b, 0);
-        // Keep the current angle stable
-        const currentAngle = b.angle;
-        Body.setAngle(b, currentAngle);
       }
     }
     
@@ -344,15 +339,6 @@ setInterval(() => {
         Body.setVelocity(b, { x: 0, y: 0 });
         Body.setAngularVelocity(b, 0);
         Body.setAngle(b, 0);
-      }
-      
-      // Prevent rotation for objects being dragged
-      if (draggedObjects.has(b.label)) {
-        // Freeze rotation by setting angular velocity to 0
-        Body.setAngularVelocity(b, 0);
-        // Keep the current angle stable
-        const currentAngle = b.angle;
-        Body.setAngle(b, currentAngle);
       }
     }
     
