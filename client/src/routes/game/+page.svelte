@@ -35,17 +35,23 @@
 	}
 	let mousePositions: MousePositionsMap = {};
 
-	let canvasWidth = 800;
-	let canvasHeight = 600;
+	// Canvas dimensions - maintaining 2:1 aspect ratio
+	let canvasWidth = 1920;
+	let canvasHeight = 960; // 2:1 ratio (1920/2 = 960)
 	let objects: Record<string, BodyState> = {};
 
 	let dragging = false;
 	let dragId: string | null = null;
+	let dragOffset = { x: 0, y: 0 }; // Offset from mouse to object center
 	const RADIUS = 20;
 	let spriteCache: Record<string, HTMLImageElement> = {};
 
 	let lobbyCode: string | null = null;
 	let joinedPhysics = false;
+
+	// Client-side object ownership for better latency
+	let ownedObjects: Set<string> = new Set();
+	let localObjectPositions: Record<string, { x: number; y: number; angle: number }> = {};
 
 	const log = (...args: any[]) => console.log(...args);
 	// const log = (...args: any[]) => {};
@@ -83,7 +89,23 @@
 			} else {
 				safeEmit('mouseLeave');
 			}
-			if (dragging) {
+			if (dragging && dragId) {
+				// Update local position immediately for owned objects
+				if (ownedObjects.has(dragId)) {
+					const newX = x - dragOffset.x;
+					const newY = y - dragOffset.y;
+					localObjectPositions[dragId] = { 
+						x: newX, 
+						y: newY, 
+						angle: localObjectPositions[dragId]?.angle || 0 
+					};
+					// Update the object position for immediate visual feedback
+					if (objects[dragId]) {
+						objects[dragId].x = newX;
+						objects[dragId].y = newY;
+					}
+					draw(); // Redraw immediately for smooth dragging
+				}
 				safeEmit('drag', { x, y });
 			}
 		} catch (err) {
@@ -98,7 +120,10 @@
 
 	function handleWindowMouseup(): void {
 		log('handleWindowMouseup', { dragging, dragId });
-		if (dragging) {
+		if (dragging && dragId) {
+			// Release ownership of the object
+			ownedObjects.delete(dragId);
+			delete localObjectPositions[dragId];
 			safeEmit('endDrag');
 			dragging = false;
 			dragId = null;
@@ -121,13 +146,23 @@
 				hit = true;
 				dragging = true;
 				dragId = id;
-				log('   • startDrag on', id, { mx, my });
+				// Calculate offset from mouse to object center
+				dragOffset.x = dx;
+				dragOffset.y = dy;
+				// Take ownership of the object
+				ownedObjects.add(id);
+				localObjectPositions[id] = { x: o.x, y: o.y, angle: o.angle };
+				log('   • startDrag on', id, { mx, my, dragOffset });
 				safeEmit('startDrag', { id, x: mx, y: my });
 				break;
 			}
 		}
 		if (!hit && dragging) {
 			log('   • endDrag (missed hit)', { dragId });
+			if (dragId) {
+				ownedObjects.delete(dragId);
+				delete localObjectPositions[dragId];
+			}
 			safeEmit('endDrag');
 			dragging = false;
 			dragId = null;
@@ -149,6 +184,9 @@
 		const t0 = performance.now();
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+		// Draw hand-drawn style background
+		drawHandDrawnBackground();
+
 		for (const id in objects) {
 			const o = objects[id];
 			if (o.image) {
@@ -169,10 +207,8 @@
 				ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
 				ctx.restore();
 			} else {
-				ctx.beginPath();
-				ctx.arc(o.x, o.y, RADIUS, 0, Math.PI * 2);
-				ctx.fillStyle = 'blue';
-				ctx.fill();
+				// Draw hand-drawn style circle
+				drawHandDrawnCircle(o.x, o.y, RADIUS, 'blue');
 			}
 		}
 
@@ -197,25 +233,82 @@
 		const t1 = performance.now();
 		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
 
+		// Draw hand-drawn style anchors
 		ctx.fillStyle = 'red';
 		for (const p of anchors) {
-			ctx.beginPath();
-			ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
-			ctx.fill();
+			drawHandDrawnCircle(p.x, p.y, 5, 'red');
 		}
 
 		log('[draw] done');
 	}
 
+	function drawHandDrawnBackground() {
+		// Create a subtle hand-drawn paper texture
+		ctx.fillStyle = '#f8f6f0';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+		
+		// Add some hand-drawn grid lines
+		ctx.strokeStyle = '#e8e4d8';
+		ctx.lineWidth = 1;
+		ctx.setLineDash([5, 5]);
+		
+		// Vertical lines
+		for (let x = 0; x < canvas.width; x += 100) {
+			ctx.beginPath();
+			ctx.moveTo(x + Math.random() * 2, 0);
+			ctx.lineTo(x + Math.random() * 2, canvas.height);
+			ctx.stroke();
+		}
+		
+		// Horizontal lines
+		for (let y = 0; y < canvas.height; y += 100) {
+			ctx.beginPath();
+			ctx.moveTo(0, y + Math.random() * 2);
+			ctx.lineTo(canvas.width, y + Math.random() * 2);
+			ctx.stroke();
+		}
+		
+		ctx.setLineDash([]);
+	}
+
+	function drawHandDrawnCircle(x: number, y: number, radius: number, color: string) {
+		ctx.save();
+		ctx.strokeStyle = color;
+		ctx.fillStyle = color;
+		ctx.lineWidth = 2;
+		
+		// Draw a hand-drawn circle with slight imperfections
+		ctx.beginPath();
+		const segments = 16;
+		for (let i = 0; i <= segments; i++) {
+			const angle = (i / segments) * Math.PI * 2;
+			const r = radius + (Math.random() - 0.5) * 2; // Slight radius variation
+			const px = x + Math.cos(angle) * r;
+			const py = y + Math.sin(angle) * r;
+			
+			if (i === 0) {
+				ctx.moveTo(px, py);
+			} else {
+				ctx.lineTo(px, py);
+			}
+		}
+		ctx.closePath();
+		ctx.fill();
+		ctx.stroke();
+		ctx.restore();
+	}
+
 	onMount(() => {
 		log('[onMount] initializing');
 
+		// Set canvas to 2:1 aspect ratio
 		canvasWidth = 1920;
-		canvasHeight = 1080;
-		canvas.width = 1920;
-		canvas.height = 1080;
+		canvasHeight = 960; // 2:1 ratio
+		canvas.width = canvasWidth;
+		canvas.height = canvasHeight;
 		canvas.style.width = '100%';
 		canvas.style.height = 'auto';
+		canvas.style.maxHeight = '50vh'; // Ensure 2:1 ratio is maintained
 
 		// Extract lobby code from URL
 		const params = new URLSearchParams(window.location.search);
@@ -256,8 +349,12 @@
 
 		// update
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			objects = {};
-			payload.bodies.forEach((o) => (objects[o.id] = o));
+			// Only update objects that we don't own
+			payload.bodies.forEach((o) => {
+				if (!ownedObjects.has(o.id)) {
+					objects[o.id] = o;
+				}
+			});
 
 			anchors = payload.anchors;
 			log('Socket state received', payload);
@@ -306,30 +403,192 @@
 	}
 </script>
 
-<div class="full-height flex items-center justify-center">
-	<canvas
-		bind:this={canvas}
-		width={canvasWidth}
-		height={canvasHeight}
-		style="cursor:url(''/images/cursor.svg') 14 8, auto"
-		on:mousedown={handleCanvasMousedown}
-		on:mousemove={handleCanvasMousemove}
-	></canvas>
+<div class="game-container">
+	<div class="canvas-wrapper">
+		<canvas
+			bind:this={canvas}
+			width={canvasWidth}
+			height={canvasHeight}
+			style="cursor:url(''/images/cursor.svg') 14 8, auto"
+			on:mousedown={handleCanvasMousedown}
+			on:mousemove={handleCanvasMousemove}
+		></canvas>
+	</div>
+	
+	<!-- Hand-drawn style UI overlay -->
+	<div class="ui-overlay">
+		<div class="info-panel">
+			<div class="info-item">
+				<span class="info-label">🎮 Lobby:</span>
+				<span class="info-value">{lobbyCode}</span>
+			</div>
+			<div class="info-item">
+				<span class="info-label">👥 Players:</span>
+				<span class="info-value">{Object.keys(mousePositions).length + 1}</span>
+			</div>
+		</div>
+		
+		<div class="instructions">
+			<p>🎯 Click and drag objects to move them!</p>
+			<p>🖱️ Watch other players' cursors</p>
+		</div>
+	</div>
 </div>
 
 <style>
-	canvas {
-		background-color: white;
-		width: 100%;
-		height: auto;
-		max-height: 100vh;
-		display: block;
+	.game-container {
+		position: relative;
+		width: 100vw;
+		height: 100vh;
+		background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
 	}
 
-	.full-height {
-		height: calc(var(--vh) * 100);
-		width: 100vw;
+	.canvas-wrapper {
 		position: relative;
-		overflow: hidden;
+		width: 100%;
+		max-width: 100vw;
+		max-height: 50vh; /* Maintain 2:1 aspect ratio */
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+
+	canvas {
+		background-color: #f8f6f0;
+		width: 100%;
+		height: auto;
+		max-height: 50vh;
+		display: block;
+		border: 3px solid #8b7355;
+		border-radius: 15px;
+		box-shadow: 
+			0 10px 30px rgba(0,0,0,0.2),
+			0 0 0 1px rgba(139, 115, 85, 0.3);
+	}
+
+	.ui-overlay {
+		position: absolute;
+		top: 20px;
+		left: 20px;
+		right: 20px;
+		pointer-events: none;
+		z-index: 10;
+	}
+
+	.info-panel {
+		background: rgba(255, 255, 255, 0.95);
+		border: 3px solid #8b7355;
+		border-radius: 15px;
+		padding: 15px 20px;
+		box-shadow: 
+			0 5px 15px rgba(0,0,0,0.1),
+			0 0 0 1px rgba(139, 115, 85, 0.2);
+		display: inline-block;
+		pointer-events: none;
+	}
+
+	.info-item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-bottom: 8px;
+		font-family: 'Comic Neue', cursive;
+		font-size: 1rem;
+	}
+
+	.info-item:last-child {
+		margin-bottom: 0;
+	}
+
+	.info-label {
+		font-weight: 600;
+		color: #5d4e37;
+	}
+
+	.info-value {
+		font-weight: 700;
+		color: #8b7355;
+		background: #f0e6d2;
+		padding: 2px 8px;
+		border-radius: 8px;
+		border: 1px solid #d4c4a8;
+	}
+
+	.instructions {
+		position: absolute;
+		bottom: 20px;
+		left: 20px;
+		background: rgba(255, 255, 255, 0.95);
+		border: 3px solid #8b7355;
+		border-radius: 15px;
+		padding: 15px 20px;
+		box-shadow: 
+			0 5px 15px rgba(0,0,0,0.1),
+			0 0 0 1px rgba(139, 115, 85, 0.2);
+		pointer-events: none;
+	}
+
+	.instructions p {
+		margin: 5px 0;
+		font-family: 'Comic Neue', cursive;
+		font-size: 0.9rem;
+		color: #5d4e37;
+		font-weight: 600;
+	}
+
+	/* Hand-drawn style decorations */
+	.game-container::before {
+		content: '';
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		width: 60px;
+		height: 60px;
+		background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="%238b7355" stroke-width="3" stroke-dasharray="5,5"/><circle cx="50" cy="50" r="25" fill="none" stroke="%238b7355" stroke-width="2"/></svg>') no-repeat center;
+		opacity: 0.3;
+		pointer-events: none;
+	}
+
+	.game-container::after {
+		content: '';
+		position: absolute;
+		bottom: 10px;
+		right: 10px;
+		width: 40px;
+		height: 40px;
+		background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M20,80 L80,80 L80,20 L20,20 Z" fill="none" stroke="%238b7355" stroke-width="2" stroke-dasharray="3,3"/></svg>') no-repeat center;
+		opacity: 0.3;
+		pointer-events: none;
+	}
+
+	@media (max-width: 768px) {
+		.ui-overlay {
+			top: 10px;
+			left: 10px;
+			right: 10px;
+		}
+
+		.info-panel {
+			padding: 10px 15px;
+		}
+
+		.info-item {
+			font-size: 0.9rem;
+		}
+
+		.instructions {
+			bottom: 10px;
+			left: 10px;
+			padding: 10px 15px;
+		}
+
+		.instructions p {
+			font-size: 0.8rem;
+		}
 	}
 </style>

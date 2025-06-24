@@ -3,6 +3,17 @@
 :root {
   /* fallback for game canvas */
   --vh: 1vh;
+  
+  /* Hand-drawn style color palette */
+  --paper-bg: #f8f6f0;
+  --border-color: #8b7355;
+  --text-primary: #5d4e37;
+  --text-secondary: #8b7355;
+  --accent-color: #4ecdc4;
+  --accent-hover: #3db8b0;
+  --shadow-light: rgba(139, 115, 85, 0.2);
+  --shadow-medium: rgba(0, 0, 0, 0.1);
+  --shadow-heavy: rgba(0, 0, 0, 0.2);
 }
 
 * {
@@ -15,4 +26,41 @@ body {
   font-family: 'Comic Neue', cursive;
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   min-height: 100vh;
+  color: var(--text-primary);
+}
+
+/* Hand-drawn style utility classes */
+.hand-drawn-border {
+  border: 3px solid var(--border-color);
+  border-radius: 15px;
+  box-shadow: 
+    0 5px 15px var(--shadow-medium),
+    0 0 0 1px var(--shadow-light);
+}
+
+.hand-drawn-text {
+  font-family: 'Comic Neue', cursive;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.hand-drawn-button {
+  font-family: 'Comic Neue', cursive;
+  font-weight: 700;
+  border: 3px solid var(--border-color);
+  border-radius: 12px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 
+    3px 3px 0 var(--shadow-medium),
+    0 0 0 1px var(--shadow-light);
+}
+
+.hand-drawn-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    5px 5px 0 var(--shadow-medium),
+    0 0 0 1px var(--shadow-light),
+    0 8px 25px var(--shadow-heavy);
 }
