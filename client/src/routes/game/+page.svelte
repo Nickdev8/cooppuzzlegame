@@ -52,7 +52,8 @@
 	// Client-side object ownership for better latency
 	let ownedObjects: Set<string> = new Set();
 	let localObjectPositions: Record<string, { x: number; y: number; angle: number }> = {};
-	let clientSideOwnershipEnabled = false; // Will be set by server
+	// Always enable client-side ownership for smooth dragging
+	const clientSideOwnershipEnabled = true;
 
 	const log = (...args: any[]) => console.log(...args);
 	// const log = (...args: any[]) => {};
@@ -87,19 +88,23 @@
 				safeEmit('mouseLeave');
 			}
 			if (dragging && dragId) {
-				// Update local position immediately for owned objects (only if ownership is enabled)
-				if (clientSideOwnershipEnabled && ownedObjects.has(dragId)) {
+				// Always update local position immediately for owned objects for smooth dragging
+				if (ownedObjects.has(dragId)) {
 					const newX = x - dragOffset.x;
 					const newY = y - dragOffset.y;
+					// Preserve the current rotation from the object
+					const currentAngle = objects[dragId]?.angle || 0;
 					localObjectPositions[dragId] = { 
 						x: newX, 
 						y: newY, 
-						angle: localObjectPositions[dragId]?.angle || 0 
+						angle: currentAngle
 					};
 					// Update the object position for immediate visual feedback
 					if (objects[dragId]) {
 						objects[dragId].x = newX;
 						objects[dragId].y = newY;
+						// Keep the current rotation
+						objects[dragId].angle = currentAngle;
 					}
 					draw(); // Redraw immediately for smooth dragging
 				}
@@ -118,11 +123,9 @@
 	function handleWindowMouseup(): void {
 		log('handleWindowMouseup', { dragging, dragId });
 		if (dragging && dragId) {
-			// Release ownership of the object (only if ownership is enabled)
-			if (clientSideOwnershipEnabled) {
-				ownedObjects.delete(dragId);
-				delete localObjectPositions[dragId];
-			}
+			// Always release ownership of the object when dragging ends
+			ownedObjects.delete(dragId);
+			delete localObjectPositions[dragId];
 			safeEmit('endDrag');
 			dragging = false;
 			dragId = null;
@@ -162,12 +165,10 @@
 				// Calculate offset from mouse to object center
 				dragOffset.x = dx;
 				dragOffset.y = dy;
-				// Take ownership of the object (only if ownership is enabled)
-				if (clientSideOwnershipEnabled) {
-					ownedObjects.add(id);
-					localObjectPositions[id] = { x: o.x, y: o.y, angle: o.angle };
-				}
-				log('   • startDrag on', id, { mx, my, dragOffset, ownershipEnabled: clientSideOwnershipEnabled });
+				// Always take ownership of the object for smooth dragging
+				ownedObjects.add(id);
+				localObjectPositions[id] = { x: o.x, y: o.y, angle: o.angle };
+				log('   • startDrag on', id, { mx, my, dragOffset });
 				safeEmit('startDrag', { id, x: mx, y: my });
 				break;
 			}
@@ -200,6 +201,15 @@
 
 		for (const id in objects) {
 			const o = objects[id];
+			ctx.save();
+			ctx.translate(o.x, o.y);
+			ctx.rotate(o.angle);
+			
+			// Debug rotation occasionally
+			if (Math.random() < 0.01) { // 1% chance to log
+				log(`[draw] Rendering ${id} at (${o.x.toFixed(1)}, ${o.y.toFixed(1)}) with angle ${o.angle.toFixed(3)}`);
+			}
+			
 			if (o.image) {
 				let img = spriteCache[id];
 				if (!img) {
@@ -212,15 +222,13 @@
 					};
 					img.onerror = (e) => console.error('[draw] Image load error for', id, e);
 				}
-				ctx.save();
-				ctx.translate(o.x, o.y);
-				ctx.rotate(o.angle);
 				ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
-				ctx.restore();
 			} else {
-				// Draw hand-drawn style circle
-				drawHandDrawnCircle(o.x, o.y, RADIUS, 'blue');
+				// Draw hand-drawn style circle with rotation
+				drawHandDrawnCircle(0, 0, RADIUS, 'blue'); // Draw at origin since we already translated
 			}
+			
+			ctx.restore();
 		}
 
 		for (const clientId in mousePositions) {
@@ -319,7 +327,6 @@
 	}
 
 	function drawHandDrawnCircle(x: number, y: number, radius: number, color: string) {
-		ctx.save();
 		ctx.strokeStyle = color;
 		ctx.fillStyle = color;
 		ctx.lineWidth = 2;
@@ -342,7 +349,6 @@
 		ctx.closePath();
 		ctx.fill();
 		ctx.stroke();
-		ctx.restore();
 	}
 
 	onMount(() => {
@@ -398,8 +404,7 @@
 
 		socket.on('joinedPhysics', (data: { clientSideOwnershipEnabled: boolean }) => {
 			joinedPhysics = true;
-			clientSideOwnershipEnabled = data.clientSideOwnershipEnabled;
-			log('[joinedPhysics] Client-side ownership enabled:', clientSideOwnershipEnabled);
+			log('[joinedPhysics] Client-side ownership enabled:', data.clientSideOwnershipEnabled);
 		});
 
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
@@ -407,10 +412,33 @@
 
 		// update
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			// Update objects that we don't own OR objects that have anchors (only if ownership is enabled)
+			// Update objects that we don't own OR objects that have anchors
 			payload.bodies.forEach((o) => {
-				if (!clientSideOwnershipEnabled || !ownedObjects.has(o.id) || o.hasAnchors) {
+				if (!ownedObjects.has(o.id) || o.hasAnchors) {
+					// Full update for non-owned objects or objects with anchors
 					objects[o.id] = o;
+					log(`[state] Full update for ${o.id}: angle=${o.angle.toFixed(3)}`);
+				} else {
+					// For owned objects without anchors, update rotation from server but keep client-side position
+					if (objects[o.id]) {
+						const oldAngle = objects[o.id].angle;
+						const newAngle = o.angle;
+						objects[o.id].angle = newAngle;
+						// Update local position record to include new rotation
+						if (localObjectPositions[o.id]) {
+							localObjectPositions[o.id].angle = newAngle;
+						}
+						log(`[state] Rotation update for owned ${o.id}: ${oldAngle.toFixed(3)} -> ${newAngle.toFixed(3)}`);
+					} else {
+						// New object that we own - use server position initially but keep rotation updates
+						objects[o.id] = { ...o };
+						if (localObjectPositions[o.id]) {
+							// Use our local position but server rotation
+							objects[o.id].x = localObjectPositions[o.id].x;
+							objects[o.id].y = localObjectPositions[o.id].y;
+						}
+						log(`[state] New owned object ${o.id}: angle=${o.angle.toFixed(3)}`);
+					}
 				}
 			});
 

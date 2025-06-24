@@ -170,7 +170,9 @@ fi
 
 echo "Pushing to remote..."
 git push
-
+echo "Resuming after 5 seconds...."
+sleep 5
+echo "Done\n"
 echo "Deploying on remote server..."
 ssh nickesselman.nl 'bash -s' <<'ENDSSH'
 set -euo pipefail

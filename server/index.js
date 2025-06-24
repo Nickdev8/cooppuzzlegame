@@ -17,7 +17,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 const WALL_THICKNESS = 10;
 const RESPAWN_MARGIN = 50;
 const SCENE_FILE = path.join(__dirname, 'scene.json');
-const CLIENT_SIDE_OWNERSHIP_ENABLED = false; // Hardcoded toggle for client-side ownership system
+const CLIENT_SIDE_OWNERSHIP_ENABLED = true; // Always enable client-side ownership for better responsiveness
 
 // ─── LOBBY PHYSICS SUPPORT ─────────────────────────────────────────────
 const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, interval, sockets: Set }
@@ -276,16 +276,22 @@ setInterval(() => {
     }
     
     io.to(lobbyCode).emit('state', {
-      bodies: lobbyWorld.bodies.map(({ body, renderHint }) => ({
-        id: body.label,
-        x: body.position.x,
-        y: body.position.y,
-        angle: body.angle,
-        image: renderHint.image,
-        width: renderHint.width,
-        height: renderHint.height,
-        hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
-      })),
+      bodies: lobbyWorld.bodies.map(({ body, renderHint }) => {
+        // Debug rotation occasionally
+        if (Math.random() < 0.01) { // 1% chance to log
+          console.log(`[server] Sending ${body.label}: angle=${body.angle.toFixed(3)}, pos=(${body.position.x.toFixed(1)}, ${body.position.y.toFixed(1)})`);
+        }
+        return {
+          id: body.label,
+          x: body.position.x,
+          y: body.position.y,
+          angle: body.angle,
+          image: renderHint.image,
+          width: renderHint.width,
+          height: renderHint.height,
+          hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
+        };
+      }),
       anchors: lobbyWorld.anchoredBodies.map(({ C }) => C.pointA)
     });
   }
@@ -317,16 +323,22 @@ setInterval(() => {
     }
     
     io.to('GLOBAL').emit('state', {
-      bodies: globalLobby.bodies.map(({ body, renderHint }) => ({
-        id: body.label,
-        x: body.position.x,
-        y: body.position.y,
-        angle: body.angle,
-        image: renderHint.image,
-        width: renderHint.width,
-        height: renderHint.height,
-        hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
-      })),
+      bodies: globalLobby.bodies.map(({ body, renderHint }) => {
+        // Debug rotation occasionally
+        if (Math.random() < 0.01) { // 1% chance to log
+          console.log(`[server] Sending ${body.label}: angle=${body.angle.toFixed(3)}, pos=(${body.position.x.toFixed(1)}, ${body.position.y.toFixed(1)})`);
+        }
+        return {
+          id: body.label,
+          x: body.position.x,
+          y: body.position.y,
+          angle: body.angle,
+          image: renderHint.image,
+          width: renderHint.width,
+          height: renderHint.height,
+          hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
+        };
+      }),
       anchors: globalLobby.anchoredBodies.map(({ C }) => C.pointA)
     });
   }
