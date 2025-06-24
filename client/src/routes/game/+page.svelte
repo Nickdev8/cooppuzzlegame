@@ -44,6 +44,9 @@
 	const RADIUS = 20;
 	let spriteCache: Record<string, HTMLImageElement> = {};
 
+	let lobbyCode: string | null = null;
+	let joinedPhysics = false;
+
 	const log = (...args: any[]) => console.log(...args);
 	// const log = (...args: any[]) => {};
 
@@ -76,12 +79,12 @@
 		log('handleWindowMousemove', { x, y, dragging });
 		try {
 			if (x >= 0 && y >= 0 && x <= canvas.width && y <= canvas.height) {
-				socket.emit('movemouse', { x, y });
+				safeEmit('movemouse', { x, y });
 			} else {
-				socket.emit('mouseLeave');
+				safeEmit('mouseLeave');
 			}
 			if (dragging) {
-				socket.emit('drag', { x, y });
+				safeEmit('drag', { x, y });
 			}
 		} catch (err) {
 			console.error('[handleWindowMousemove] emit error:', err);
@@ -90,13 +93,13 @@
 
 	function handleWindowMouseleave(): void {
 		log('handleWindowMouseleave');
-		socket.emit('mouseLeave');
+		safeEmit('mouseLeave');
 	}
 
 	function handleWindowMouseup(): void {
 		log('handleWindowMouseup', { dragging, dragId });
 		if (dragging) {
-			socket.emit('endDrag');
+			safeEmit('endDrag');
 			dragging = false;
 			dragId = null;
 		}
@@ -119,13 +122,13 @@
 				dragging = true;
 				dragId = id;
 				log('   • startDrag on', id, { mx, my });
-				socket.emit('startDrag', { id, x: mx, y: my });
+				safeEmit('startDrag', { id, x: mx, y: my });
 				break;
 			}
 		}
 		if (!hit && dragging) {
 			log('   • endDrag (missed hit)', { dragId });
-			socket.emit('endDrag');
+			safeEmit('endDrag');
 			dragging = false;
 			dragId = null;
 		}
@@ -139,7 +142,7 @@
 		const mx = (e.clientX - rect.left) * scaleX;
 		const my = (e.clientY - rect.top) * scaleY;
 		log('handleCanvasMousemove (dragging)', { mx, my });
-		socket.emit('drag', { x: mx, y: my });
+		safeEmit('drag', { x: mx, y: my });
 	}
 
 	function draw(): void {
@@ -214,11 +217,19 @@
 		canvas.style.width = '100%';
 		canvas.style.height = 'auto';
 
-		cursorImg = new Image(); // 'let' allows reassignment here
+		// Extract lobby code from URL
+		const params = new URLSearchParams(window.location.search);
+		lobbyCode = params.get('lobby');
+		if (!lobbyCode) {
+			alert('No lobby code in URL!');
+			return;
+		}
+
+		cursorImg = new Image();
 		cursorImg.src = '/images/cursor.svg';
 		cursorImg.onload = () => {
 			console.log('Cursor SVG loaded');
-			draw(); // or start your render loop
+			draw();
 		};
 
 		if (!canvas) {
@@ -229,9 +240,15 @@
 		socket = io(location.origin, { transports: ['websocket'], timeout: 10000 });
 
 		socket.on('connect', () => {
-			const localId = socket.id!; // assert non-null
+			const localId = socket.id!;
 			cursorHues[localId] = Math.floor(Math.random() * 360);
 			console.log('Local hue for', localId, ':', cursorHues[localId]);
+			// Join the physics lobby
+			socket.emit('joinPhysics', { lobby: lobbyCode });
+		});
+
+		socket.on('joinedPhysics', () => {
+			joinedPhysics = true;
 		});
 
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
@@ -279,6 +296,13 @@
 		window.removeEventListener('mouseup', handleWindowMouseup);
 		socket.disconnect();
 	});
+
+	// --- Wrap socket emits to only send after joinedPhysics ---
+	function safeEmit(event: string, data?: any) {
+		if (joinedPhysics) {
+			socket.emit(event, data);
+		}
+	}
 </script>
 
 <div class="full-height flex items-center justify-center">

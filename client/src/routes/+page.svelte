@@ -162,7 +162,7 @@
       console.log('🎮 [DEBUG] Game starting:', { lobbyCode, players });
       console.log('🎮 [DEBUG] Redirecting to physics page...');
       // Redirect to physics page
-      window.location.href = `/physics?lobby=${lobbyCode}`;
+      window.location.href = `/game?lobby=${lobbyCode}`;
     });
     
     socket.on('hostTransferred', ({ newHostId, players }) => {
