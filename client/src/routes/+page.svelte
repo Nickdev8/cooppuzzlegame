@@ -2,6 +2,139 @@
   import { onMount, onDestroy } from 'svelte';
   import io, { Socket } from 'socket.io-client';
   
+  // Physics engine variables
+  let physicsCanvas: HTMLCanvasElement;
+  let physicsCtx: CanvasRenderingContext2D;
+  let animationId: number;
+  let lastTime = 0;
+  
+  // Physics constants
+  const GRAVITY = 0.5;
+  const BALL_RADIUS = 8;
+  const MAX_BALLS = 50;
+  const SPAWN_RATE = 0.02; // Probability per frame
+  
+  // Ball class for efficient physics
+  class Ball {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    radius: number;
+    color: string;
+    hue: number;
+    
+    constructor(x: number, y: number) {
+      this.x = x;
+      this.y = y;
+      this.vx = (Math.random() - 0.5) * 2; // Random horizontal velocity
+      this.vy = Math.random() * 2 + 1; // Downward velocity
+      this.radius = BALL_RADIUS + Math.random() * 4;
+      this.hue = Math.random() * 360;
+      this.color = `hsl(${this.hue}, 70%, 60%)`;
+    }
+    
+    update(deltaTime: number, canvasWidth: number, canvasHeight: number) {
+      // Apply gravity
+      this.vy += GRAVITY * deltaTime;
+      
+      // Update position
+      this.x += this.vx * deltaTime;
+      this.y += this.vy * deltaTime;
+      
+      // Bounce off walls (but not floor)
+      if (this.x - this.radius < 0) {
+        this.x = this.radius;
+        this.vx = Math.abs(this.vx) * 0.8;
+      } else if (this.x + this.radius > canvasWidth) {
+        this.x = canvasWidth - this.radius;
+        this.vx = -Math.abs(this.vx) * 0.8;
+      }
+      
+      // Remove balls that fall below screen
+      return this.y < canvasHeight + this.radius * 2;
+    }
+    
+    draw(ctx: CanvasRenderingContext2D) {
+      ctx.save();
+      ctx.fillStyle = this.color;
+      ctx.shadowColor = 'rgba(0,0,0,0.3)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+      
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Add highlight
+      ctx.fillStyle = `hsla(${this.hue}, 70%, 80%, 0.6)`;
+      ctx.beginPath();
+      ctx.arc(this.x - this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+    }
+  }
+  
+  // Physics state
+  let balls: Ball[] = [];
+  let physicsRunning = false;
+  
+  // Physics animation loop
+  function physicsLoop(currentTime: number) {
+    if (!physicsRunning || !physicsCanvas || !physicsCtx) return;
+    
+    const deltaTime = Math.min(currentTime - lastTime, 16); // Cap at 60fps
+    lastTime = currentTime;
+    
+    // Clear canvas with gradient background
+    const gradient = physicsCtx.createLinearGradient(0, 0, 0, physicsCanvas.height);
+    gradient.addColorStop(0, '#f5f7fa');
+    gradient.addColorStop(1, '#c3cfe2');
+    physicsCtx.fillStyle = gradient;
+    physicsCtx.fillRect(0, 0, physicsCanvas.width, physicsCanvas.height);
+    
+    // Spawn new balls
+    if (balls.length < MAX_BALLS && Math.random() < SPAWN_RATE) {
+      const x = Math.random() * physicsCanvas.width;
+      balls.push(new Ball(x, -BALL_RADIUS));
+    }
+    
+    // Update and draw balls
+    balls = balls.filter(ball => {
+      const alive = ball.update(deltaTime, physicsCanvas.width, physicsCanvas.height);
+      if (alive) {
+        ball.draw(physicsCtx);
+      }
+      return alive;
+    });
+    
+    animationId = requestAnimationFrame(physicsLoop);
+  }
+  
+  // Initialize physics
+  function initPhysics() {
+    if (!physicsCanvas) return;
+    
+    physicsCtx = physicsCanvas.getContext('2d')!;
+    physicsCanvas.width = window.innerWidth;
+    physicsCanvas.height = window.innerHeight;
+    
+    // Start physics loop
+    physicsRunning = true;
+    lastTime = performance.now();
+    animationId = requestAnimationFrame(physicsLoop);
+  }
+  
+  // Handle window resize
+  function handleResize() {
+    if (physicsCanvas) {
+      physicsCanvas.width = window.innerWidth;
+      physicsCanvas.height = window.innerHeight;
+    }
+  }
+  
   let currentView = 'main'; // main, join, create, lobby, username
   let joinType = ''; // public, private
   let lobbyCode = '';
@@ -56,6 +189,10 @@
   
   onMount(() => {
     console.log('🚀 [DEBUG] Component mounted, setting up socket connection...');
+    
+    // Initialize physics engine
+    initPhysics();
+    window.addEventListener('resize', handleResize);
     
     // Connect to lobby server
     const lobbyUrl = window.location.hostname === 'localhost' 
@@ -234,6 +371,14 @@
   
   onDestroy(() => {
     console.log('🛑 [DEBUG] Component destroying, disconnecting socket...');
+    
+    // Clean up physics animation
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+      physicsRunning = false;
+    }
+    window.removeEventListener('resize', handleResize);
+    
     if (socket) {
       socket.disconnect();
       console.log('🛑 [DEBUG] Socket disconnected');
@@ -578,6 +723,13 @@
   <title>Coop Puzzle Game - Lobby</title>
 </svelte:head>
 
+<!-- Physics background canvas -->
+<canvas 
+  bind:this={physicsCanvas}
+  class="physics-background"
+  style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none;"
+></canvas>
+
 <div class="journal-container">
   <!-- Main Menu -->
   {#if currentView === 'main'}
@@ -883,6 +1035,8 @@
   
   <!-- Not Host Popup -->
   {#if showNotHostPopup}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div 
       class="popup-overlay" 
       role="dialog"

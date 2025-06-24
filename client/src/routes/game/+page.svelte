@@ -77,11 +77,7 @@
 
 	function handleWindowMousemove(e: MouseEvent): void {
 		if (!canvas) return;
-		const rect = canvas.getBoundingClientRect();
-		const scaleX = canvas.width / rect.width;
-		const scaleY = canvas.height / rect.height;
-		const x = (e.clientX - rect.left) * scaleX;
-		const y = (e.clientY - rect.top) * scaleY;
+		const { x, y } = transformMouseToCanvas(e.clientX, e.clientY);
 
 		log('handleWindowMousemove', { x, y, dragging });
 		try {
@@ -134,11 +130,7 @@
 	}
 
 	function handleCanvasMousedown(e: MouseEvent): void {
-		const rect = canvas.getBoundingClientRect();
-		const scaleX = canvas.width / rect.width;
-		const scaleY = canvas.height / rect.height;
-		const mx = (e.clientX - rect.left) * scaleX;
-		const my = (e.clientY - rect.top) * scaleY;
+		const { x: mx, y: my } = transformMouseToCanvas(e.clientX, e.clientY);
 		log('handleCanvasMousedown', { mx, my });
 		
 		// Check if an anchor was clicked
@@ -194,11 +186,7 @@
 
 	function handleCanvasMousemove(e: MouseEvent): void {
 		if (!dragging) return;
-		const rect = canvas.getBoundingClientRect();
-		const scaleX = canvas.width / rect.width;
-		const scaleY = canvas.height / rect.height;
-		const mx = (e.clientX - rect.left) * scaleX;
-		const my = (e.clientY - rect.top) * scaleY;
+		const { x: mx, y: my } = transformMouseToCanvas(e.clientX, e.clientY);
 		log('handleCanvasMousemove (dragging)', { mx, my });
 		safeEmit('drag', { x: mx, y: my });
 	}
@@ -487,6 +475,35 @@
 				scale: { x: canvas.width / rect.width, y: canvas.height / rect.height }
 			});
 		}, 100);
+	}
+
+	// Coordinate transformation function to ensure consistent coordinates
+	function transformMouseToCanvas(clientX: number, clientY: number): { x: number; y: number } {
+		if (!canvas) return { x: clientX, y: clientY };
+		
+		const rect = canvas.getBoundingClientRect();
+		const scaleX = canvas.width / rect.width;
+		const scaleY = canvas.height / rect.height;
+		
+		const x = (clientX - rect.left) * scaleX;
+		const y = (clientY - rect.top) * scaleY;
+		
+		// Clamp coordinates to canvas bounds
+		const clampedX = Math.max(0, Math.min(canvas.width, x));
+		const clampedY = Math.max(0, Math.min(canvas.height, y));
+		
+		// Debug coordinate transformation occasionally
+		if (Math.random() < 0.01) { // 1% chance to log
+			log('[transform] Mouse coordinates:', {
+				client: { x: clientX, y: clientY },
+				rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+				scale: { x: scaleX, y: scaleY },
+				transformed: { x: clampedX, y: clampedY },
+				canvas: { width: canvas.width, height: canvas.height }
+			});
+		}
+		
+		return { x: clampedX, y: clampedY };
 	}
 </script>
 
