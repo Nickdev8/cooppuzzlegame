@@ -35,6 +35,9 @@
 	}
 	let mousePositions: MousePositionsMap = {};
 
+	// Canvas dimensions - maintaining 2:1 aspect ratio
+	let canvasWidth = 1920;
+	let canvasHeight = 960; // 2:1 ratio (1920/2 = 960)
 	let objects: Record<string, BodyState> = {};
 
 	let dragging = false;
@@ -298,6 +301,15 @@
 	onMount(() => {
 		log('[onMount] initializing');
 
+		// Set canvas to 2:1 aspect ratio
+		canvasWidth = 1920;
+		canvasHeight = 960; // 2:1 ratio
+		canvas.width = canvasWidth;
+		canvas.height = canvasHeight;
+		canvas.style.width = '100%';
+		canvas.style.height = 'auto';
+		canvas.style.maxHeight = '50vh'; // Ensure 2:1 ratio is maintained
+
 		// Extract lobby code from URL
 		const params = new URLSearchParams(window.location.search);
 		lobbyCode = params.get('lobby');
@@ -395,6 +407,8 @@
 	<div class="canvas-wrapper">
 		<canvas
 			bind:this={canvas}
+			width={canvasWidth}
+			height={canvasHeight}
 			style="cursor:url(''/images/cursor.svg') 14 8, auto"
 			on:mousedown={handleCanvasMousedown}
 			on:mousemove={handleCanvasMousemove}
@@ -412,6 +426,11 @@
 				<span class="info-label">👥 Players:</span>
 				<span class="info-value">{Object.keys(mousePositions).length + 1}</span>
 			</div>
+		</div>
+		
+		<div class="instructions">
+			<p>🎯 Click and drag objects to move them!</p>
+			<p>🖱️ Watch other players' cursors</p>
 		</div>
 	</div>
 </div>
@@ -431,6 +450,9 @@
 
 	.canvas-wrapper {
 		position: relative;
+		width: 100%;
+		max-width: 100vw;
+		max-height: 50vh; /* Maintain 2:1 aspect ratio */
 		display: flex;
 		justify-content: center;
 		align-items: center;
@@ -438,11 +460,9 @@
 
 	canvas {
 		background-color: #f8f6f0;
-		width: auto;
+		width: 100%;
 		height: auto;
-		max-width: 100vh;
-		max-height: 100vh;
-		aspect-ratio: 20 / 11;
+		max-height: 50vh;
 		display: block;
 		border: 3px solid #8b7355;
 		border-radius: 15px;
@@ -499,6 +519,28 @@
 		border: 1px solid #d4c4a8;
 	}
 
+	.instructions {
+		position: absolute;
+		bottom: 20px;
+		left: 20px;
+		background: rgba(255, 255, 255, 0.95);
+		border: 3px solid #8b7355;
+		border-radius: 15px;
+		padding: 15px 20px;
+		box-shadow: 
+			0 5px 15px rgba(0,0,0,0.1),
+			0 0 0 1px rgba(139, 115, 85, 0.2);
+		pointer-events: none;
+	}
+
+	.instructions p {
+		margin: 5px 0;
+		font-family: 'Comic Neue', cursive;
+		font-size: 0.9rem;
+		color: #5d4e37;
+		font-weight: 600;
+	}
+
 	/* Hand-drawn style decorations */
 	.game-container::before {
 		content: '';
@@ -537,6 +579,16 @@
 
 		.info-item {
 			font-size: 0.9rem;
+		}
+
+		.instructions {
+			bottom: 10px;
+			left: 10px;
+			padding: 10px 15px;
+		}
+
+		.instructions p {
+			font-size: 0.8rem;
 		}
 	}
 </style>
