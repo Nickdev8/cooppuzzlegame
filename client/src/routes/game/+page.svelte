@@ -2,6 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import io, { Socket } from 'socket.io-client';
 
+	let anchors: { x: number; y: number }[] = [];
+
 	interface BodyState {
 		id: string;
 		x: number;
@@ -16,36 +18,64 @@
 	let ctx: CanvasRenderingContext2D;
 	let socket: Socket;
 
+	let cursorImg: HTMLImageElement;
+	const cursorSize = 32;
+
+	interface CursorHuesMap {
+		[id: string]: number;
+	}
+	const cursorHues: CursorHuesMap = {};
+
+	interface MousePosition {
+		x: number;
+		y: number;
+	}
+	interface MousePositionsMap {
+		[id: string]: MousePosition;
+	}
+	let mousePositions: MousePositionsMap = {};
+
 	let canvasWidth = 800;
 	let canvasHeight = 600;
 	let objects: Record<string, BodyState> = {};
-	let mousePositions: Record<string, { x: number; y: number }> = {};
 
 	let dragging = false;
 	let dragId: string | null = null;
 	const RADIUS = 20;
 	let spriteCache: Record<string, HTMLImageElement> = {};
 
-	const log = (...args: any[]) => console.debug('[ESCAPE-CLIENT]', ...args);
+	const log = (...args: any[]) => console.log(...args);
+	// const log = (...args: any[]) => {};
 
-	function reportSize(): void {
-		const size = { width: window.innerWidth, height: window.innerHeight };
-		log('→ reportSize()', size);
-		try {
-			socket.emit('initSize', size);
-		} catch (err) {
-			console.error('[reportSize] emit failed:', err);
+	function colorForId(id: string): string {
+		let hash = 0;
+		for (let i = 0; i < id.length; i++) {
+			hash = (hash * 31 + id.charCodeAt(i)) | 0;
 		}
+		const hue = (hash >>> 0) % 360;
+		return `hsl(${hue},100%,50%)`;
+	}
+
+	function makeCursorDataURL(color: string): string {
+		const svg = `
+     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 32 32">
+       <path d="M1,1 L31,16 L1,31 Z" fill="${color}" stroke="black" stroke-width="1"/>
+     </svg>
+   `.trim();
+		return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 	}
 
 	function handleWindowMousemove(e: MouseEvent): void {
 		if (!canvas) return;
 		const rect = canvas.getBoundingClientRect();
-		const x = e.clientX - rect.left;
-		const y = e.clientY - rect.top;
-		log('→ handleWindowMousemove', { x, y, dragging });
+		const scaleX = canvas.width / rect.width;
+		const scaleY = canvas.height / rect.height;
+		const x = (e.clientX - rect.left) * scaleX;
+		const y = (e.clientY - rect.top) * scaleY;
+
+		log('handleWindowMousemove', { x, y, dragging });
 		try {
-			if (x >= 0 && y >= 0 && x <= canvasWidth && y <= canvasHeight) {
+			if (x >= 0 && y >= 0 && x <= canvas.width && y <= canvas.height) {
 				socket.emit('movemouse', { x, y });
 			} else {
 				socket.emit('mouseLeave');
@@ -59,12 +89,12 @@
 	}
 
 	function handleWindowMouseleave(): void {
-		log('→ handleWindowMouseleave');
+		log('handleWindowMouseleave');
 		socket.emit('mouseLeave');
 	}
 
 	function handleWindowMouseup(): void {
-		log('→ handleWindowMouseup', { dragging, dragId });
+		log('handleWindowMouseup', { dragging, dragId });
 		if (dragging) {
 			socket.emit('endDrag');
 			dragging = false;
@@ -74,9 +104,11 @@
 
 	function handleCanvasMousedown(e: MouseEvent): void {
 		const rect = canvas.getBoundingClientRect();
-		const mx = e.clientX - rect.left;
-		const my = e.clientY - rect.top;
-		log('→ handleCanvasMousedown', { mx, my });
+		const scaleX = canvas.width / rect.width;
+		const scaleY = canvas.height / rect.height;
+		const mx = (e.clientX - rect.left) * scaleX;
+		const my = (e.clientY - rect.top) * scaleY;
+		log('handleCanvasMousedown', { mx, my });
 		let hit = false;
 		for (const id in objects) {
 			const o = objects[id];
@@ -102,15 +134,18 @@
 	function handleCanvasMousemove(e: MouseEvent): void {
 		if (!dragging) return;
 		const rect = canvas.getBoundingClientRect();
-		const mx = e.clientX - rect.left;
-		const my = e.clientY - rect.top;
-		log('→ handleCanvasMousemove (dragging)', { mx, my });
+		const scaleX = canvas.width / rect.width;
+		const scaleY = canvas.height / rect.height;
+		const mx = (e.clientX - rect.left) * scaleX;
+		const my = (e.clientY - rect.top) * scaleY;
+		log('handleCanvasMousemove (dragging)', { mx, my });
 		socket.emit('drag', { x: mx, y: my });
 	}
 
 	function draw(): void {
 		const t0 = performance.now();
-		ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
 		for (const id in objects) {
 			const o = objects[id];
 			if (o.image) {
@@ -137,12 +172,55 @@
 				ctx.fill();
 			}
 		}
+
+		for (const clientId in mousePositions) {
+			const pos = mousePositions[clientId]!;
+			const hue = cursorHues[clientId]!;
+
+			ctx.save();
+			ctx.filter = `hue-rotate(${hue}deg)`;
+			ctx.drawImage(
+				cursorImg,
+				pos.x - cursorSize / 2,
+				pos.y - cursorSize / 2,
+				cursorSize,
+				cursorSize
+			);
+			ctx.restore();
+		}
+
+		ctx.filter = 'none';
+
 		const t1 = performance.now();
 		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
+
+		ctx.fillStyle = 'red';
+		for (const p of anchors) {
+			ctx.beginPath();
+			ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+			ctx.fill();
+		}
+
+		log('[draw] done');
 	}
 
 	onMount(() => {
 		log('[onMount] initializing');
+
+		canvasWidth = 1920;
+		canvasHeight = 1080;
+		canvas.width = 1920;
+		canvas.height = 1080;
+		canvas.style.width = '100%';
+		canvas.style.height = 'auto';
+
+		cursorImg = new Image(); // 'let' allows reassignment here
+		cursorImg.src = '/images/cursor.svg';
+		cursorImg.onload = () => {
+			console.log('Cursor SVG loaded');
+			draw(); // or start your render loop
+		};
+
 		if (!canvas) {
 			console.error('[onMount] canvas ref not set!');
 			return;
@@ -150,44 +228,38 @@
 		ctx = canvas.getContext('2d')!;
 		socket = io(location.origin, { transports: ['websocket'], timeout: 10000 });
 
-		socket.on('connect', () => log('[socket] connect — id:', socket.id));
+		socket.on('connect', () => {
+			const localId = socket.id!; // assert non-null
+			cursorHues[localId] = Math.floor(Math.random() * 360);
+			console.log('Local hue for', localId, ':', cursorHues[localId]);
+		});
+
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
 		socket.on('disconnect', (reason) => console.warn('[socket] disconnect:', reason));
 
-		socket.on('canvasSize', ({ width, height }: { width: number; height: number }) => {
-			log('[socket] canvasSize', { width, height });
-
-			if (window.innerHeight > height && window.innerWidth > width) {
-				var hightdiff = window.innerHeight - height;
-				var widthdiff = window.innerWidth - width;
-
-				if (hightdiff > widthdiff) {
-					height - widthdiff;
-					width - widthdiff;
-				} else {
-					height - hightdiff;
-					width - hightdiff;
-				}
-			}
-
-			canvasWidth = width;
-			canvasHeight = height;
-			canvas.width = width;
-			canvas.height = height;
-		});
-
-		socket.on('state', (data: BodyState[]) => {
-			log('[socket] state received —', data.length, 'bodies');
+		// update
+		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
 			objects = {};
-			data.forEach((o: BodyState) => {
-				objects[o.id] = o;
-			});
+			payload.bodies.forEach((o) => (objects[o.id] = o));
+
+			anchors = payload.anchors;
+
 			draw();
 		});
 
-		socket.on('mouseMoved', ({ id, x, y }: { id: string; x: number; y: number }) => {
-			log('[socket] mouseMoved', { id, x, y });
+		socket.on('mouseMoved', (payload: { id: string; x: number; y: number }) => {
+			const { id, x, y } = payload;
+
+			if (id === socket.id) {
+				return;
+			}
+
 			mousePositions[id] = { x, y };
+
+			if (cursorHues[id] === undefined) {
+				cursorHues[id] = Math.floor(Math.random() * 360);
+				console.log('Assigned hue for', id, ':', cursorHues[id]);
+			}
 		});
 
 		socket.on('mouseRemoved', ({ id }: { id: string }) => {
@@ -195,8 +267,6 @@
 			delete mousePositions[id];
 		});
 
-		reportSize();
-		window.addEventListener('resize', reportSize);
 		window.addEventListener('mousemove', handleWindowMousemove);
 		window.addEventListener('mouseleave', handleWindowMouseleave);
 		window.addEventListener('mouseup', handleWindowMouseup);
@@ -204,7 +274,6 @@
 
 	onDestroy(() => {
 		log('[onDestroy] cleaning up');
-		window.removeEventListener('resize', reportSize);
 		window.removeEventListener('mousemove', handleWindowMousemove);
 		window.removeEventListener('mouseleave', handleWindowMouseleave);
 		window.removeEventListener('mouseup', handleWindowMouseup);
@@ -217,35 +286,19 @@
 		bind:this={canvas}
 		width={canvasWidth}
 		height={canvasHeight}
+		style="cursor:url(''/images/cursor.svg') 14 8, auto"
 		on:mousedown={handleCanvasMousedown}
 		on:mousemove={handleCanvasMousemove}
 	></canvas>
-	{#each Object.entries(mousePositions) as [clientId, pos]}
-		<div
-			class="cursor"
-			style="
-          position:absolute;
-          left:{pos.x}px; top:{pos.y}px;
-          width:8px; height:8px;
-          background:red; border-radius:50%;
-          transform:translate(-50%,-50%);
-          pointer-events:none;
-        "
-		></div>
-	{/each}
 </div>
 
 <style>
-	.cursor {
-		border: 1px solid yellow;
-	}
-
-	body {
-		background-color: black;
-	}
-
 	canvas {
 		background-color: white;
+		width: 100%;
+		height: auto;
+		max-height: 100vh;
+		display: block;
 	}
 
 	.full-height {
