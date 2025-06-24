@@ -193,8 +193,5 @@ sudo systemctl status nginx --no-pager -l
 
 echo_info "=== Deployment Summary ==="
 echo_success "Deployment completed successfully!"
-echo_debug "Client deployed to: /var/www/escape-room-client"
-echo_debug "Server processes:"
-pm2 list --no-daemon
 echo_debug "Nginx status: $(sudo systemctl is-active nginx)"
 echo_info "=== End of Deployment Process ==="

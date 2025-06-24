@@ -17,7 +17,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 const WALL_THICKNESS = 10;
 const RESPAWN_MARGIN = 50;
 const SCENE_FILE = path.join(__dirname, 'scene.json');
-const CLIENT_SIDE_OWNERSHIP_ENABLED = true; // Always enable client-side ownership for better responsiveness
+const CLIENT_SIDE_OWNERSHIP_ENABLED = false; // Always enable client-side ownership for better responsiveness
 
 // ─── LOBBY PHYSICS SUPPORT ─────────────────────────────────────────────
 const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, interval, sockets: Set }
@@ -134,7 +134,6 @@ function getLobbyWorld(lobbyCode) {
 io.on('connection', socket => {
   let lobbyCode = null;
   let lobbyWorld = null;
-  let dragC = null;
   socket.ownedObjects = new Set(); // Track objects owned by this client
 
   socket.on('joinPhysics', ({ lobby }) => {
@@ -147,7 +146,6 @@ io.on('connection', socket => {
 
   socket.on('startDrag', ({ id, x, y }) => {
     if (!lobbyWorld) return;
-    if (dragC) return;
     const entry = lobbyWorld.bodies.find(o => o.renderHint.id === id);
     if (!entry) return;
     
@@ -157,29 +155,41 @@ io.on('connection', socket => {
       return;
     }
     
-    // Mark this object as owned by this client
+    // Allow any client to drag any object - mark this object as owned by this client
     socket.ownedObjects.add(id);
     
-    dragC = Constraint.create({ pointA: { x, y }, bodyB: entry.body, pointB: { x: 0, y: 0 }, stiffness: 0.1, damping: 0.02 });
+    // Create a new drag constraint for this client
+    const dragC = Constraint.create({ 
+      pointA: { x, y }, 
+      bodyB: entry.body, 
+      pointB: { x: 0, y: 0 }, 
+      stiffness: 0.1, 
+      damping: 0.02 
+    });
     World.add(lobbyWorld.world, dragC);
+    
+    // Store the drag constraint with the socket for later cleanup
+    socket.dragConstraint = dragC;
+    console.log(`Client ${socket.id} started dragging object ${id}`);
   });
 
   socket.on('drag', ({ x, y }) => {
     if (!lobbyWorld) return;
-    if (dragC) {
-      dragC.pointA.x = x;
-      dragC.pointA.y = y;
+    if (socket.dragConstraint) {
+      socket.dragConstraint.pointA.x = x;
+      socket.dragConstraint.pointA.y = y;
     }
   });
 
   socket.on('endDrag', () => {
     if (!lobbyWorld) return;
-    if (dragC) {
-      World.remove(lobbyWorld.world, dragC);
-      dragC = null;
+    if (socket.dragConstraint) {
+      World.remove(lobbyWorld.world, socket.dragConstraint);
+      socket.dragConstraint = null;
     }
     // Clear ownership when drag ends
     socket.ownedObjects.clear();
+    console.log(`Client ${socket.id} stopped dragging`);
   });
 
   socket.on('removeAnchor', ({ index, x, y }) => {
@@ -235,6 +245,12 @@ io.on('connection', socket => {
 
   socket.on('disconnect', () => {
     if (lobbyWorld) {
+      // Clean up any drag constraints
+      if (socket.dragConstraint) {
+        World.remove(lobbyWorld.world, socket.dragConstraint);
+        socket.dragConstraint = null;
+      }
+      
       lobbyWorld.sockets.delete(socket);
       socket.to(lobbyCode).emit('mouseRemoved', { id: socket.id });
       // Clear any owned objects when client disconnects

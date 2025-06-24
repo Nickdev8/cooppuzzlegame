@@ -412,33 +412,28 @@
 
 		// update
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			// Update objects that we don't own OR objects that have anchors
+			// Always update all objects from server, but preserve client-side position for objects we're currently dragging
 			payload.bodies.forEach((o) => {
-				if (!ownedObjects.has(o.id) || o.hasAnchors) {
-					// Full update for non-owned objects or objects with anchors
-					objects[o.id] = o;
-					log(`[state] Full update for ${o.id}: angle=${o.angle.toFixed(3)}`);
-				} else {
-					// For owned objects without anchors, update rotation from server but keep client-side position
-					if (objects[o.id]) {
+				if (objects[o.id]) {
+					// If we're currently dragging this object, keep our position but update rotation
+					if (ownedObjects.has(o.id) && !o.hasAnchors) {
 						const oldAngle = objects[o.id].angle;
 						const newAngle = o.angle;
 						objects[o.id].angle = newAngle;
-						// Update local position record to include new rotation
+						// Keep our local position but update rotation
 						if (localObjectPositions[o.id]) {
 							localObjectPositions[o.id].angle = newAngle;
 						}
-						log(`[state] Rotation update for owned ${o.id}: ${oldAngle.toFixed(3)} -> ${newAngle.toFixed(3)}`);
+						log(`[state] Rotation update for dragged ${o.id}: ${oldAngle.toFixed(3)} -> ${newAngle.toFixed(3)}`);
 					} else {
-						// New object that we own - use server position initially but keep rotation updates
-						objects[o.id] = { ...o };
-						if (localObjectPositions[o.id]) {
-							// Use our local position but server rotation
-							objects[o.id].x = localObjectPositions[o.id].x;
-							objects[o.id].y = localObjectPositions[o.id].y;
-						}
-						log(`[state] New owned object ${o.id}: angle=${o.angle.toFixed(3)}`);
+						// Full update for non-dragged objects or objects with anchors
+						objects[o.id] = o;
+						log(`[state] Full update for ${o.id}: angle=${o.angle.toFixed(3)}`);
 					}
+				} else {
+					// New object - always use server state
+					objects[o.id] = o;
+					log(`[state] New object ${o.id}: angle=${o.angle.toFixed(3)}`);
 				}
 			});
 
