@@ -36,8 +36,8 @@
 	}
 	let mousePositions: MousePositionsMap = {};
 
-	let canvasWidth = 1920;
-	let canvasHeight = 1080; // 16:9 ratio
+	let canvasWidth = 2048;
+	let canvasHeight = 1024; // 2:1 ratio
 	let objects: Record<string, BodyState> = {};
 
 	let dragging = false;
@@ -52,6 +52,7 @@
 	// Client-side object ownership for better latency
 	let ownedObjects: Set<string> = new Set();
 	let localObjectPositions: Record<string, { x: number; y: number; angle: number }> = {};
+	let clientSideOwnershipEnabled = false; // Will be set by server
 
 	const log = (...args: any[]) => console.log(...args);
 	// const log = (...args: any[]) => {};
@@ -90,8 +91,8 @@
 				safeEmit('mouseLeave');
 			}
 			if (dragging && dragId) {
-				// Update local position immediately for owned objects
-				if (ownedObjects.has(dragId)) {
+				// Update local position immediately for owned objects (only if ownership is enabled)
+				if (clientSideOwnershipEnabled && ownedObjects.has(dragId)) {
 					const newX = x - dragOffset.x;
 					const newY = y - dragOffset.y;
 					localObjectPositions[dragId] = { 
@@ -121,9 +122,11 @@
 	function handleWindowMouseup(): void {
 		log('handleWindowMouseup', { dragging, dragId });
 		if (dragging && dragId) {
-			// Release ownership of the object
-			ownedObjects.delete(dragId);
-			delete localObjectPositions[dragId];
+			// Release ownership of the object (only if ownership is enabled)
+			if (clientSideOwnershipEnabled) {
+				ownedObjects.delete(dragId);
+				delete localObjectPositions[dragId];
+			}
 			safeEmit('endDrag');
 			dragging = false;
 			dragId = null;
@@ -154,10 +157,12 @@
 				// Calculate offset from mouse to object center
 				dragOffset.x = dx;
 				dragOffset.y = dy;
-				// Take ownership of the object
-				ownedObjects.add(id);
-				localObjectPositions[id] = { x: o.x, y: o.y, angle: o.angle };
-				log('   • startDrag on', id, { mx, my, dragOffset });
+				// Take ownership of the object (only if ownership is enabled)
+				if (clientSideOwnershipEnabled) {
+					ownedObjects.add(id);
+					localObjectPositions[id] = { x: o.x, y: o.y, angle: o.angle };
+				}
+				log('   • startDrag on', id, { mx, my, dragOffset, ownershipEnabled: clientSideOwnershipEnabled });
 				safeEmit('startDrag', { id, x: mx, y: my });
 				break;
 			}
@@ -306,9 +311,9 @@
 	onMount(() => {
 		log('[onMount] initializing');
 
-		// Set canvas to 16:9 aspect ratio (1920x1080)
-		canvasWidth = 1920;
-		canvasHeight = 1080; // 16:9 ratio
+		// Set canvas to 2:1 aspect ratio (2048x1024)
+		canvasWidth = 2048;
+		canvasHeight = 1024; // 2:1 ratio
 		canvas.width = canvasWidth;
 		canvas.height = canvasHeight;
 		canvas.style.width = '100%';
@@ -354,8 +359,10 @@
 			socket.emit('joinPhysics', { lobby: lobbyCode });
 		});
 
-		socket.on('joinedPhysics', () => {
+		socket.on('joinedPhysics', (data: { clientSideOwnershipEnabled: boolean }) => {
 			joinedPhysics = true;
+			clientSideOwnershipEnabled = data.clientSideOwnershipEnabled;
+			log('[joinedPhysics] Client-side ownership enabled:', clientSideOwnershipEnabled);
 		});
 
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
@@ -363,9 +370,9 @@
 
 		// update
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			// Update objects that we don't own OR objects that have anchors
+			// Update objects that we don't own OR objects that have anchors (only if ownership is enabled)
 			payload.bodies.forEach((o) => {
-				if (!ownedObjects.has(o.id) || o.hasAnchors) {
+				if (!clientSideOwnershipEnabled || !ownedObjects.has(o.id) || o.hasAnchors) {
 					objects[o.id] = o;
 				}
 			});
@@ -458,7 +465,22 @@
 				<span class="info-value">{Object.keys(mousePositions).length + 1}</span>
 			</div>
 		</div>
-	
+		
+		<!-- Client-side ownership status -->
+		<div class="ownership-status-panel">
+			<div class="info-item">
+				<span class="info-label">⚡ Client Ownership:</span>
+				<span class="info-value {clientSideOwnershipEnabled ? 'enabled' : 'disabled'}">
+					{clientSideOwnershipEnabled ? 'ON' : 'OFF'}
+				</span>
+			</div>
+			{#if clientSideOwnershipEnabled}
+				<div class="info-item">
+					<span class="info-label">🎯 Owned Objects:</span>
+					<span class="info-value">{ownedObjects.size}</span>
+				</div>
+			{/if}
+		</div>
 	</div>
 </div>
 
@@ -487,8 +509,8 @@
 		padding: 20px;
 		box-sizing: border-box;
 		overflow: hidden;
-		/* Ensure the wrapper respects the 16:9 aspect ratio */
-		max-width: calc((100vh - 40px) * 16/9);
+		/* Ensure the wrapper respects the 2:1 aspect ratio */
+		max-width: calc((100vh - 40px) * 2);
 	}
 
 	canvas {
@@ -503,8 +525,8 @@
 		box-shadow: 
 			0 10px 30px rgba(0,0,0,0.2),
 			0 0 0 1px rgba(139, 115, 85, 0.3);
-		/* Maintain 16:9 aspect ratio */
-		aspect-ratio: 16/9;
+		/* Maintain 2:1 aspect ratio */
+		aspect-ratio: 2/1;
 		object-fit: contain;
 	}
 
@@ -554,6 +576,32 @@
 		padding: 2px 8px;
 		border-radius: 8px;
 		border: 1px solid #d4c4a8;
+	}
+
+	/* Ownership status panel */
+	.ownership-status-panel {
+		background: rgba(255, 255, 255, 0.95);
+		border: 3px solid #8b7355;
+		border-radius: 15px;
+		padding: 15px 20px;
+		box-shadow: 
+			0 5px 15px rgba(0,0,0,0.1),
+			0 0 0 1px rgba(139, 115, 85, 0.2);
+		display: inline-block;
+		pointer-events: none;
+		margin-top: 10px;
+	}
+
+	.info-value.enabled {
+		background: #4ecdc4 !important;
+		color: white !important;
+		border-color: #4ecdc4 !important;
+	}
+
+	.info-value.disabled {
+		background: #ff6b6b !important;
+		color: white !important;
+		border-color: #ff6b6b !important;
 	}
 
 	/* Hand-drawn style decorations */

@@ -17,6 +17,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 const WALL_THICKNESS = 10;
 const RESPAWN_MARGIN = 50;
 const SCENE_FILE = path.join(__dirname, 'scene.json');
+const CLIENT_SIDE_OWNERSHIP_ENABLED = false; // Hardcoded toggle for client-side ownership system
 
 // ─── LOBBY PHYSICS SUPPORT ─────────────────────────────────────────────
 const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, interval, sockets: Set }
@@ -131,7 +132,7 @@ io.on('connection', socket => {
     lobbyWorld = getLobbyWorld(lobbyCode);
     lobbyWorld.sockets.add(socket);
     socket.join(lobbyCode);
-    socket.emit('joinedPhysics');
+    socket.emit('joinedPhysics', { clientSideOwnershipEnabled: CLIENT_SIDE_OWNERSHIP_ENABLED });
   });
 
   socket.on('startDrag', ({ id, x, y }) => {
