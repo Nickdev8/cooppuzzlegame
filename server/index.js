@@ -17,7 +17,7 @@ const io = new Server(server, { cors: { origin: '*' } });
 const WALL_THICKNESS = 10;
 const RESPAWN_MARGIN = 50;
 const SCENE_FILE = path.join(__dirname, 'scene.json');
-const CLIENT_SIDE_OWNERSHIP_ENABLED = false; // Always enable client-side ownership for better responsiveness
+const CLIENT_SIDE_OWNERSHIP_ENABLED = false;
 
 // ─── LOBBY PHYSICS SUPPORT ─────────────────────────────────────────────
 const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, interval, sockets: Set }

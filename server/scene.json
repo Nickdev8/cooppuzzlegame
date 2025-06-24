@@ -145,5 +145,19 @@
         "damping": 0.9
       }
     ]
+  },
+  {
+    "id": "panel2",
+    "type": "rectangle",
+    "width": 120,
+    "height": 80,
+    "mass": 2,
+    "restitution": 0.2,
+    "friction": 0.2,
+    "image": "/images/box.png",
+    "screen": {
+      "xPercent": 0.8,
+      "yPercent": 0.4
+    }
   }
 ]

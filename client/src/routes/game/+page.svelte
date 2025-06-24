@@ -153,7 +153,20 @@
 			const o = objects[id];
 			const dx = mx - o.x;
 			const dy = my - o.y;
-			if (dx * dx + dy * dy <= RADIUS * RADIUS) {
+			
+			// Use rectangular hit detection for objects with width/height, circular for others
+			let isHit = false;
+			if (o.width && o.height) {
+				// Rectangular hit detection - check if mouse is within the object bounds
+				const halfWidth = o.width / 2;
+				const halfHeight = o.height / 2;
+				isHit = Math.abs(dx) <= halfWidth && Math.abs(dy) <= halfHeight;
+			} else {
+				// Circular hit detection for objects without explicit dimensions
+				isHit = dx * dx + dy * dy <= RADIUS * RADIUS;
+			}
+			
+			if (isHit) {
 				// Check if object has anchors - if so, don't allow client-side dragging
 				if (o.hasAnchors) {
 					log('   • Object has anchors, cannot be dragged by client:', id);
@@ -168,7 +181,7 @@
 				// Always take ownership of the object for smooth dragging
 				ownedObjects.add(id);
 				localObjectPositions[id] = { x: o.x, y: o.y, angle: o.angle };
-				log('   • startDrag on', id, { mx, my, dragOffset });
+				log('   • startDrag on', id, { mx, my, dragOffset, width: o.width, height: o.height });
 				safeEmit('startDrag', { id, x: mx, y: my });
 				break;
 			}
@@ -223,9 +236,23 @@
 					img.onerror = (e) => console.error('[draw] Image load error for', id, e);
 				}
 				ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
+				
+				// Debug: Draw hit detection area (uncomment to see hit areas)
+				// if (o.width && o.height) {
+				// 	ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+				// 	ctx.lineWidth = 2;
+				// 	ctx.strokeRect(-o.width / 2, -o.height / 2, o.width, o.height);
+				// }
 			} else {
 				// Draw hand-drawn style circle with rotation
 				drawHandDrawnCircle(0, 0, RADIUS, 'blue'); // Draw at origin since we already translated
+				
+				// Debug: Draw hit detection area for circles (uncomment to see hit areas)
+				// ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+				// ctx.lineWidth = 2;
+				// ctx.beginPath();
+				// ctx.arc(0, 0, RADIUS, 0, Math.PI * 2);
+				// ctx.stroke();
 			}
 			
 			ctx.restore();
