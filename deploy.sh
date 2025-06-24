@@ -21,9 +21,14 @@ if ! sudo -n true 2>/dev/null; then
   echo_error "Passwordless sudo is required for deployment. Aborting."; exit 1
 fi
 
+# Fix permissions for build
+sudo chown -R $(whoami):$(whoami) /home/pi/escape-room/client
+
 # Build client
 echo_info "Building client..."
 cd /home/pi/escape-room/client
+rm -rf /home/pi/escape-room/client/.svelte-kit
+rm -rf /home/pi/escape-room/client/build
 npm ci
 npm run build
 
