@@ -16,19 +16,10 @@ for cmd in npm pm2 sudo nginx; do
   fi
 done
 
-# Check for .env file
-if [ ! -f /home/pi/escape-room/.env ]; then
-  echo_error ".env file not found at /home/pi/escape-room/.env. Aborting."; exit 1
-fi
-
 # Check for passwordless sudo
 if ! sudo -n true 2>/dev/null; then
   echo_error "Passwordless sudo is required for deployment. Aborting."; exit 1
 fi
-
-# Load environment variables
-echo_info "Loading environment variables..."
-source /home/pi/escape-room/.env
 
 # Build client
 echo_info "Building client..."
