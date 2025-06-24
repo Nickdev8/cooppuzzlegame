@@ -146,10 +146,10 @@
 			const anchor = anchors[i];
 			const dx = mx - anchor.x;
 			const dy = my - anchor.y;
-			if (dx * dx + dy * dy <= 64) { // 8px radius for anchor clicking (matches the outer circle)
-				log('   • Anchor clicked at index:', i, { x: anchor.x, y: anchor.y });
+			if (dx * dx + dy * dy <= 100) { // 10px radius for screw clicking (matches the outer circle)
+				log('   • Screw clicked at index:', i, { x: anchor.x, y: anchor.y });
 				safeEmit('removeAnchor', { index: i, x: anchor.x, y: anchor.y });
-				return; // Don't check for object dragging if anchor was clicked
+				return; // Don't check for object dragging if screw was clicked
 			}
 		}
 		
@@ -256,31 +256,43 @@
 		const t1 = performance.now();
 		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
 
-		// Draw hand-drawn style anchors
+		// Draw hand-drawn style anchors (screws)
 		ctx.fillStyle = 'red';
 		for (const p of anchors) {
-			// Draw a larger, more visible anchor with a border
+			// Draw a screw-like anchor
 			ctx.save();
-			ctx.strokeStyle = 'darkred';
-			ctx.fillStyle = 'red';
-			ctx.lineWidth = 2;
 			
-			// Draw outer circle
+			// Screw head (outer circle)
+			ctx.strokeStyle = '#8B4513'; // Brown border
+			ctx.fillStyle = '#D2691E'; // Metallic brown
+			ctx.lineWidth = 2;
 			ctx.beginPath();
-			ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+			ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
 			ctx.fill();
 			ctx.stroke();
 			
-			// Draw inner circle
-			ctx.fillStyle = 'white';
+			// Screw head inner circle
+			ctx.fillStyle = '#CD853F'; // Lighter brown
 			ctx.beginPath();
-			ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+			ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
 			ctx.fill();
 			
-			// Draw center dot
-			ctx.fillStyle = 'red';
+			// Cross pattern (screwdriver slot)
+			ctx.strokeStyle = '#654321'; // Dark brown
+			ctx.lineWidth = 2;
 			ctx.beginPath();
-			ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+			// Vertical line
+			ctx.moveTo(p.x, p.y - 4);
+			ctx.lineTo(p.x, p.y + 4);
+			// Horizontal line
+			ctx.moveTo(p.x - 4, p.y);
+			ctx.lineTo(p.x + 4, p.y);
+			ctx.stroke();
+			
+			// Center dot
+			ctx.fillStyle = '#654321';
+			ctx.beginPath();
+			ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
 			ctx.fill();
 			
 			ctx.restore();

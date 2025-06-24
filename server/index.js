@@ -106,8 +106,11 @@ function createLobbyWorld(lobbyCode) {
           bodyB: b,
           pointB: { x: localX - halfW, y: localY - halfH },
           length: 0,
-          stiffness: fp.stiffness ?? 1,
-          damping: fp.damping ?? 0.1
+          stiffness: fp.stiffness ?? 0.9,
+          damping: fp.damping ?? 0.8,
+          render: {
+            visible: false
+          }
         });
         World.add(world, C);
         anchoredBodies.push({ cfg, C, fp });
@@ -193,16 +196,24 @@ io.on('connection', socket => {
       // Remove the anchor from the anchoredBodies array
       lobbyWorld.anchoredBodies.splice(index, 1);
       
-      // Update the object's hasAnchors property by removing the fixedPoint
+      // Update the object's hasAnchors property by removing the corresponding fixedPoint
       const objectEntry = lobbyWorld.bodies.find(o => o.renderHint.id === anchorData.cfg.id);
       if (objectEntry && Array.isArray(objectEntry.renderHint.fixedPoints)) {
-        // Remove the specific fixed point that corresponds to this anchor
+        // Find the fixed point that corresponds to this specific anchor
+        // We can match by comparing the anchor's fixed point data
         const fixedPointIndex = objectEntry.renderHint.fixedPoints.findIndex(fp => {
-          // This is a simplified check - in a real implementation you might need more precise matching
-          return true; // For now, remove the first matching fixed point
+          // Match by comparing the fixed point properties
+          return fp.offsetX === anchorData.fp.offsetX && 
+                 fp.offsetY === anchorData.fp.offsetY &&
+                 fp.percentX === anchorData.fp.percentX &&
+                 fp.percentY === anchorData.fp.percentY;
         });
+        
         if (fixedPointIndex !== -1) {
           objectEntry.renderHint.fixedPoints.splice(fixedPointIndex, 1);
+          console.log(`Removed fixed point ${fixedPointIndex} from object ${anchorData.cfg.id}`);
+        } else {
+          console.log(`Could not find matching fixed point for anchor ${index}`);
         }
       }
     }
