@@ -44,10 +44,11 @@ sudo chown -R $(whoami):$(whoami) /home/pi/escape-room/server
 echo_info "Building and deploying server..."
 cd /home/pi/escape-room/server
 npm ci
-if [ ! -f ecosystem.config.js ]; then
-  echo_error "ecosystem.config.js not found in server directory. Aborting."; exit 1
-fi
-pm2 reload ecosystem.config.js --env production
+pm2 stop escape-room-server escape-room-lobby || true
+pm2 start index.js --name escape-room-server --cwd /home/pi/escape-room/server --update-env
+pm2 start lobby.js --name escape-room-lobby --cwd /home/pi/escape-room/server --update-env
+pm2 restart all
+pm2 flush
 
 # Reload nginx
 echo_info "Testing and reloading nginx..."
