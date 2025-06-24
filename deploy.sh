@@ -37,6 +37,9 @@ sudo rm -rf /var/www/escape-room-client/*
 sudo cp -r build/* /var/www/escape-room-client/
 sudo chown -R www-data:www-data /var/www/escape-room-client
 
+# Fix permissions for server build
+sudo chown -R $(whoami):$(whoami) /home/pi/escape-room/server
+
 # Build and deploy server
 echo_info "Building and deploying server..."
 cd /home/pi/escape-room/server
