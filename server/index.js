@@ -271,9 +271,6 @@ io.on('connection', socket => {
 setInterval(() => {
   // Update regular lobbies
   for (const [lobbyCode, lobbyWorld] of lobbies.entries()) {
-    Engine.update(lobbyWorld.engine, 1000 / 60);
-    const floorY = lobbyWorld.canvasSize.height + WALL_THICKNESS / 2;
-    
     // Track which objects are being dragged by clients
     const draggedObjects = new Set();
     for (const socket of lobbyWorld.sockets) {
@@ -281,6 +278,28 @@ setInterval(() => {
         socket.ownedObjects.forEach(id => draggedObjects.add(id));
       }
     }
+    
+    // Temporarily disable physics for dragged objects
+    const draggedBodies = [];
+    for (const b of lobbyWorld.DYNAMIC_BODIES) {
+      if (draggedObjects.has(b.label)) {
+        // Remove from world temporarily to prevent physics simulation
+        World.remove(lobbyWorld.world, b);
+        draggedBodies.push(b);
+        console.log(`[physics] Removed ${b.label} from physics simulation (being dragged)`);
+      }
+    }
+    
+    // Run physics simulation only on non-dragged objects
+    Engine.update(lobbyWorld.engine, 1000 / 60);
+    
+    // Re-add dragged objects to world
+    for (const b of draggedBodies) {
+      World.add(lobbyWorld.world, b);
+      console.log(`[physics] Re-added ${b.label} to physics simulation`);
+    }
+    
+    const floorY = lobbyWorld.canvasSize.height + WALL_THICKNESS / 2;
     
     for (const b of lobbyWorld.DYNAMIC_BODIES) {
       // Only respawn objects that aren't being dragged
@@ -318,9 +337,6 @@ setInterval(() => {
   
   // Update global lobby
   if (globalLobby) {
-    Engine.update(globalLobby.engine, 1000 / 60);
-    const floorY = globalLobby.canvasSize.height + WALL_THICKNESS / 2;
-    
     // Track which objects are being dragged by clients
     const draggedObjects = new Set();
     for (const socket of globalLobby.sockets) {
@@ -328,6 +344,28 @@ setInterval(() => {
         socket.ownedObjects.forEach(id => draggedObjects.add(id));
       }
     }
+    
+    // Temporarily disable physics for dragged objects
+    const draggedBodies = [];
+    for (const b of globalLobby.DYNAMIC_BODIES) {
+      if (draggedObjects.has(b.label)) {
+        // Remove from world temporarily to prevent physics simulation
+        World.remove(globalLobby.world, b);
+        draggedBodies.push(b);
+        console.log(`[physics] Removed ${b.label} from physics simulation (being dragged)`);
+      }
+    }
+    
+    // Run physics simulation only on non-dragged objects
+    Engine.update(globalLobby.engine, 1000 / 60);
+    
+    // Re-add dragged objects to world
+    for (const b of draggedBodies) {
+      World.add(globalLobby.world, b);
+      console.log(`[physics] Re-added ${b.label} to physics simulation`);
+    }
+    
+    const floorY = globalLobby.canvasSize.height + WALL_THICKNESS / 2;
     
     for (const b of globalLobby.DYNAMIC_BODIES) {
       // Only respawn objects that aren't being dragged
