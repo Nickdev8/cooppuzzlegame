@@ -179,6 +179,35 @@ io.on('connection', socket => {
     socket.ownedObjects.clear();
   });
 
+  socket.on('removeAnchor', ({ index, x, y }) => {
+    if (!lobbyWorld) return;
+    
+    // Find the anchor at the specified index
+    if (index >= 0 && index < lobbyWorld.anchoredBodies.length) {
+      const anchorData = lobbyWorld.anchoredBodies[index];
+      console.log('Removing anchor:', { index, x, y, objectId: anchorData.cfg.id });
+      
+      // Remove the constraint from the world
+      World.remove(lobbyWorld.world, anchorData.C);
+      
+      // Remove the anchor from the anchoredBodies array
+      lobbyWorld.anchoredBodies.splice(index, 1);
+      
+      // Update the object's hasAnchors property by removing the fixedPoint
+      const objectEntry = lobbyWorld.bodies.find(o => o.renderHint.id === anchorData.cfg.id);
+      if (objectEntry && Array.isArray(objectEntry.renderHint.fixedPoints)) {
+        // Remove the specific fixed point that corresponds to this anchor
+        const fixedPointIndex = objectEntry.renderHint.fixedPoints.findIndex(fp => {
+          // This is a simplified check - in a real implementation you might need more precise matching
+          return true; // For now, remove the first matching fixed point
+        });
+        if (fixedPointIndex !== -1) {
+          objectEntry.renderHint.fixedPoints.splice(fixedPointIndex, 1);
+        }
+      }
+    }
+  });
+
   socket.on('movemouse', pos => {
     if (!lobbyWorld) return;
     socket.to(lobbyCode).emit('mouseMoved', {

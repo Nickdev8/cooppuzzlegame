@@ -140,6 +140,19 @@
 		const mx = (e.clientX - rect.left) * scaleX;
 		const my = (e.clientY - rect.top) * scaleY;
 		log('handleCanvasMousedown', { mx, my });
+		
+		// Check if an anchor was clicked
+		for (let i = 0; i < anchors.length; i++) {
+			const anchor = anchors[i];
+			const dx = mx - anchor.x;
+			const dy = my - anchor.y;
+			if (dx * dx + dy * dy <= 64) { // 8px radius for anchor clicking (matches the outer circle)
+				log('   • Anchor clicked at index:', i, { x: anchor.x, y: anchor.y });
+				safeEmit('removeAnchor', { index: i, x: anchor.x, y: anchor.y });
+				return; // Don't check for object dragging if anchor was clicked
+			}
+		}
+		
 		let hit = false;
 		for (const id in objects) {
 			const o = objects[id];
@@ -246,7 +259,31 @@
 		// Draw hand-drawn style anchors
 		ctx.fillStyle = 'red';
 		for (const p of anchors) {
-			drawHandDrawnCircle(p.x, p.y, 5, 'red');
+			// Draw a larger, more visible anchor with a border
+			ctx.save();
+			ctx.strokeStyle = 'darkred';
+			ctx.fillStyle = 'red';
+			ctx.lineWidth = 2;
+			
+			// Draw outer circle
+			ctx.beginPath();
+			ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.stroke();
+			
+			// Draw inner circle
+			ctx.fillStyle = 'white';
+			ctx.beginPath();
+			ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+			ctx.fill();
+			
+			// Draw center dot
+			ctx.fillStyle = 'red';
+			ctx.beginPath();
+			ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+			ctx.fill();
+			
+			ctx.restore();
 		}
 
 		log('[draw] done');

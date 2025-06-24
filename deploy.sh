@@ -44,10 +44,10 @@ sudo chown -R $(whoami):$(whoami) /home/pi/escape-room/server
 echo_info "Building and deploying server..."
 cd /home/pi/escape-room/server
 npm ci
-pm2 stop escape-room-server escape-room-lobby || true
+pm2 delete escape-room-server
+pm2 delete escape-room-lobby
 pm2 start index.js --name escape-room-server --cwd /home/pi/escape-room/server --update-env
 pm2 start lobby.js --name escape-room-lobby --cwd /home/pi/escape-room/server --update-env
-pm2 restart all
 pm2 flush
 
 # Reload nginx
