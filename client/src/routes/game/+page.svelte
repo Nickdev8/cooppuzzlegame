@@ -92,19 +92,19 @@
 				if (ownedObjects.has(dragId)) {
 					const newX = x - dragOffset.x;
 					const newY = y - dragOffset.y;
-					// Preserve the current rotation from the object
-					const currentAngle = objects[dragId]?.angle || 0;
+					// Preserve the initial rotation from when we started dragging
+					const initialAngle = localObjectPositions[dragId]?.angle || 0;
 					localObjectPositions[dragId] = { 
 						x: newX, 
 						y: newY, 
-						angle: currentAngle
+						angle: initialAngle
 					};
 					// Update the object position for immediate visual feedback
 					if (objects[dragId]) {
 						objects[dragId].x = newX;
 						objects[dragId].y = newY;
-						// Keep the current rotation
-						objects[dragId].angle = currentAngle;
+						// Keep the initial rotation
+						objects[dragId].angle = initialAngle;
 					}
 					draw(); // Redraw immediately for smooth dragging
 				}
@@ -180,8 +180,10 @@
 				dragOffset.y = dy;
 				// Always take ownership of the object for smooth dragging
 				ownedObjects.add(id);
-				localObjectPositions[id] = { x: o.x, y: o.y, angle: o.angle };
-				log('   • startDrag on', id, { mx, my, dragOffset, width: o.width, height: o.height });
+				// Store the initial rotation to preserve it during dragging
+				const initialAngle = o.angle;
+				localObjectPositions[id] = { x: o.x, y: o.y, angle: initialAngle };
+				log('   • startDrag on', id, { mx, my, dragOffset, width: o.width, height: o.height, initialAngle });
 				safeEmit('startDrag', { id, x: mx, y: my });
 				break;
 			}
@@ -442,16 +444,16 @@
 			// Always update all objects from server, but preserve client-side position for objects we're currently dragging
 			payload.bodies.forEach((o) => {
 				if (objects[o.id]) {
-					// If we're currently dragging this object, keep our position but update rotation
+					// If we're currently dragging this object, keep our position and rotation
 					if (ownedObjects.has(o.id) && !o.hasAnchors) {
-						const oldAngle = objects[o.id].angle;
-						const newAngle = o.angle;
-						objects[o.id].angle = newAngle;
-						// Keep our local position but update rotation
-						if (localObjectPositions[o.id]) {
-							localObjectPositions[o.id].angle = newAngle;
+						// Keep our local position and initial rotation - don't apply server rotation updates
+						const localPos = localObjectPositions[o.id];
+						if (localPos) {
+							objects[o.id].x = localPos.x;
+							objects[o.id].y = localPos.y;
+							objects[o.id].angle = localPos.angle; // Keep initial rotation
 						}
-						log(`[state] Rotation update for dragged ${o.id}: ${oldAngle.toFixed(3)} -> ${newAngle.toFixed(3)}`);
+						log(`[state] Preserving local state for dragged ${o.id}: angle=${localPos?.angle.toFixed(3)}`);
 					} else {
 						// Full update for non-dragged objects or objects with anchors
 						objects[o.id] = o;

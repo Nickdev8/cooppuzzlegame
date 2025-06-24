@@ -289,6 +289,15 @@ setInterval(() => {
         Body.setAngularVelocity(b, 0);
         Body.setAngle(b, 0);
       }
+      
+      // Prevent rotation for objects being dragged
+      if (draggedObjects.has(b.label)) {
+        // Freeze rotation by setting angular velocity to 0
+        Body.setAngularVelocity(b, 0);
+        // Keep the current angle stable
+        const currentAngle = b.angle;
+        Body.setAngle(b, currentAngle);
+      }
     }
     
     io.to(lobbyCode).emit('state', {
@@ -335,6 +344,15 @@ setInterval(() => {
         Body.setVelocity(b, { x: 0, y: 0 });
         Body.setAngularVelocity(b, 0);
         Body.setAngle(b, 0);
+      }
+      
+      // Prevent rotation for objects being dragged
+      if (draggedObjects.has(b.label)) {
+        // Freeze rotation by setting angular velocity to 0
+        Body.setAngularVelocity(b, 0);
+        // Keep the current angle stable
+        const currentAngle = b.angle;
+        Body.setAngle(b, currentAngle);
       }
     }
     
