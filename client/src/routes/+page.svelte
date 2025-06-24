@@ -489,12 +489,12 @@
       </div>
       
       <div class="decorative-elements">
-        <div class="doodle doodle-1">🧩</div>
+        <!-- <div class="doodle doodle-1">🧩</div>
         <div class="doodle doodle-2">🎯</div>
         <div class="doodle doodle-3">🌟</div>
         <div class="doodle doodle-4">💡</div>
         <div class="doodle doodle-5">🎨</div>
-        <div class="doodle doodle-6">📝</div>
+        <div class="doodle doodle-6">📝</div> -->
       </div>
     </div>
   {/if}
@@ -838,7 +838,7 @@
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4);
+    /* background: linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4); */
   }
   
   /* Add hand-drawn border effect */

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Only commit if there are changes
+if ! git diff --quiet; then
 kaomojis=(
   "ヽ(・∀・)ﾉ"
   "(≧▽≦)"
@@ -157,16 +159,32 @@ kaomojis=(
   "(▰˘︹˘▰)"
   "(ʘдʘ╬)"
 )
+  count=${#kaomojis[@]}
+  index=$(( RANDOM % count ))
+  msg=${kaomojis[index]}
+  git add .
+  git commit -m "$msg"
+else
+  echo "No changes to commit."
+fi
 
-
-# pick one at random
-count=${#kaomojis[@]}
-index=$(( RANDOM % count ))
-msg=${kaomojis[index]}
-
-# run git
-git add .
-git commit -m "$msg"
+echo "Pushing to remote..."
 git push
 
-ssh nickesselman.nl 'cd ~/escape-room/ && git pull && sudo npm run deploy'
+echo "Deploying on remote server..."
+ssh nickesselman.nl 'bash -s' <<'ENDSSH'
+set -euo pipefail
+cd ~/escape-room/
+echo "Pulling latest code..."
+git pull
+
+echo "Running npm run deploy..."
+if ! ./deploy.sh; then
+  echo "deploy.sh failed!" >&2
+  exit 1
+fi
+
+echo "Deployment complete!"
+ENDSSH
+
+echo "All done!"
