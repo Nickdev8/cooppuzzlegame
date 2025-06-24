@@ -140,6 +140,12 @@ io.on('connection', socket => {
     const entry = lobbyWorld.bodies.find(o => o.renderHint.id === id);
     if (!entry) return;
     
+    // Check if object has anchors - if so, don't allow dragging
+    if (Array.isArray(entry.renderHint.fixedPoints) && entry.renderHint.fixedPoints.length > 0) {
+      console.log('Client attempted to drag anchored object:', id);
+      return;
+    }
+    
     // Mark this object as owned by this client
     socket.ownedObjects.add(id);
     
@@ -226,7 +232,8 @@ setInterval(() => {
         angle: body.angle,
         image: renderHint.image,
         width: renderHint.width,
-        height: renderHint.height
+        height: renderHint.height,
+        hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
       })),
       anchors: lobbyWorld.anchoredBodies.map(({ C }) => C.pointA)
     });
@@ -263,7 +270,8 @@ setInterval(() => {
         angle: body.angle,
         image: renderHint.image,
         width: renderHint.width,
-        height: renderHint.height
+        height: renderHint.height,
+        hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
       })),
       anchors: globalLobby.anchoredBodies.map(({ C }) => C.pointA)
     });

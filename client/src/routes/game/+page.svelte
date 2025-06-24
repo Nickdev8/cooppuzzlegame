@@ -12,6 +12,7 @@
 		width: number;
 		height: number;
 		image?: string;
+		hasAnchors?: boolean;
 	}
 
 	let canvas: HTMLCanvasElement;
@@ -142,6 +143,11 @@
 			const dx = mx - o.x;
 			const dy = my - o.y;
 			if (dx * dx + dy * dy <= RADIUS * RADIUS) {
+				// Check if object has anchors - if so, don't allow client-side dragging
+				if (o.hasAnchors) {
+					log('   • Object has anchors, cannot be dragged by client:', id);
+					continue;
+				}
 				hit = true;
 				dragging = true;
 				dragId = id;
@@ -347,9 +353,9 @@
 
 		// update
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			// Only update objects that we don't own
+			// Update objects that we don't own OR objects that have anchors
 			payload.bodies.forEach((o) => {
-				if (!ownedObjects.has(o.id)) {
+				if (!ownedObjects.has(o.id) || o.hasAnchors) {
 					objects[o.id] = o;
 				}
 			});
