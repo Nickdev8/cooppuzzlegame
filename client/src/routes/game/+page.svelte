@@ -427,11 +427,7 @@
 				<span class="info-value">{Object.keys(mousePositions).length + 1}</span>
 			</div>
 		</div>
-		
-		<div class="instructions">
-			<p>🎯 Click and drag objects to move them!</p>
-			<p>🖱️ Watch other players' cursors</p>
-		</div>
+	
 	</div>
 </div>
 
@@ -519,28 +515,6 @@
 		border: 1px solid #d4c4a8;
 	}
 
-	.instructions {
-		position: absolute;
-		bottom: 20px;
-		left: 20px;
-		background: rgba(255, 255, 255, 0.95);
-		border: 3px solid #8b7355;
-		border-radius: 15px;
-		padding: 15px 20px;
-		box-shadow: 
-			0 5px 15px rgba(0,0,0,0.1),
-			0 0 0 1px rgba(139, 115, 85, 0.2);
-		pointer-events: none;
-	}
-
-	.instructions p {
-		margin: 5px 0;
-		font-family: 'Comic Neue', cursive;
-		font-size: 0.9rem;
-		color: #5d4e37;
-		font-weight: 600;
-	}
-
 	/* Hand-drawn style decorations */
 	.game-container::before {
 		content: '';
@@ -581,14 +555,5 @@
 			font-size: 0.9rem;
 		}
 
-		.instructions {
-			bottom: 10px;
-			left: 10px;
-			padding: 10px 15px;
-		}
-
-		.instructions p {
-			font-size: 0.8rem;
-		}
 	}
 </style>
