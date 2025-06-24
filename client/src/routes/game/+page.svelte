@@ -35,9 +35,6 @@
 	}
 	let mousePositions: MousePositionsMap = {};
 
-	// Canvas dimensions - maintaining 2:1 aspect ratio
-	let canvasWidth = 1920;
-	let canvasHeight = 960; // 2:1 ratio (1920/2 = 960)
 	let objects: Record<string, BodyState> = {};
 
 	let dragging = false;
@@ -301,15 +298,6 @@
 	onMount(() => {
 		log('[onMount] initializing');
 
-		// Set canvas to 2:1 aspect ratio
-		canvasWidth = 1920;
-		canvasHeight = 960; // 2:1 ratio
-		canvas.width = canvasWidth;
-		canvas.height = canvasHeight;
-		canvas.style.width = '100%';
-		canvas.style.height = 'auto';
-		canvas.style.maxHeight = '50vh'; // Ensure 2:1 ratio is maintained
-
 		// Extract lobby code from URL
 		const params = new URLSearchParams(window.location.search);
 		lobbyCode = params.get('lobby');
@@ -450,7 +438,11 @@
 
 	canvas {
 		background-color: #f8f6f0;
-		aspect-ratio: 2 / 1;
+		width: auto;
+		height: auto;
+		max-width: 100vh;
+		max-height: 100vh;
+		aspect-ratio: 20 / 11;
 		display: block;
 		border: 3px solid #8b7355;
 		border-radius: 15px;
