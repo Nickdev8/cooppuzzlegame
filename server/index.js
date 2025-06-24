@@ -41,7 +41,7 @@ function getGlobalLobby() {
 function createLobbyWorld(lobbyCode) {
   const engine = Engine.create();
   const world = engine.world;
-  let canvasSize = { width: 1920, height: 1080 };
+  let canvasSize = { width: 2048, height: 1024 }; // 2:1 aspect ratio
   let walls = { left: null, right: null, bottom: null };
   let anchoredBodies = [];
   let bodies = [], DYNAMIC_BODIES = [];

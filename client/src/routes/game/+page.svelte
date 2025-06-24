@@ -465,22 +465,6 @@
 				<span class="info-value">{Object.keys(mousePositions).length + 1}</span>
 			</div>
 		</div>
-		
-		<!-- Client-side ownership status -->
-		<div class="ownership-status-panel">
-			<div class="info-item">
-				<span class="info-label">⚡ Client Ownership:</span>
-				<span class="info-value {clientSideOwnershipEnabled ? 'enabled' : 'disabled'}">
-					{clientSideOwnershipEnabled ? 'ON' : 'OFF'}
-				</span>
-			</div>
-			{#if clientSideOwnershipEnabled}
-				<div class="info-item">
-					<span class="info-label">🎯 Owned Objects:</span>
-					<span class="info-value">{ownedObjects.size}</span>
-				</div>
-			{/if}
-		</div>
 	</div>
 </div>
 
@@ -576,32 +560,6 @@
 		padding: 2px 8px;
 		border-radius: 8px;
 		border: 1px solid #d4c4a8;
-	}
-
-	/* Ownership status panel */
-	.ownership-status-panel {
-		background: rgba(255, 255, 255, 0.95);
-		border: 3px solid #8b7355;
-		border-radius: 15px;
-		padding: 15px 20px;
-		box-shadow: 
-			0 5px 15px rgba(0,0,0,0.1),
-			0 0 0 1px rgba(139, 115, 85, 0.2);
-		display: inline-block;
-		pointer-events: none;
-		margin-top: 10px;
-	}
-
-	.info-value.enabled {
-		background: #4ecdc4 !important;
-		color: white !important;
-		border-color: #4ecdc4 !important;
-	}
-
-	.info-value.disabled {
-		background: #ff6b6b !important;
-		color: white !important;
-		border-color: #ff6b6b !important;
 	}
 
 	/* Hand-drawn style decorations */
