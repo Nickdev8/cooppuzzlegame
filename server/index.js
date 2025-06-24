@@ -21,6 +21,22 @@ const SCENE_FILE = path.join(__dirname, 'scene.json');
 // ─── LOBBY PHYSICS SUPPORT ─────────────────────────────────────────────
 const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, interval, sockets: Set }
 
+// Global lobby for unlimited players
+let globalLobby = null;
+
+function createGlobalLobby() {
+  if (!globalLobby) {
+    globalLobby = createLobbyWorld('GLOBAL');
+    globalLobby.isGlobal = true;
+    globalLobby.maxPlayers = Infinity; // Unlimited players
+  }
+  return globalLobby;
+}
+
+function getGlobalLobby() {
+  return createGlobalLobby();
+}
+
 function createLobbyWorld(lobbyCode) {
   const engine = Engine.create();
   const world = engine.world;
@@ -94,6 +110,9 @@ function createLobbyWorld(lobbyCode) {
 }
 
 function getLobbyWorld(lobbyCode) {
+  if (lobbyCode === 'GLOBAL') {
+    return getGlobalLobby();
+  }
   if (!lobbies.has(lobbyCode)) {
     lobbies.set(lobbyCode, createLobbyWorld(lobbyCode));
   }
@@ -176,6 +195,7 @@ io.on('connection', socket => {
 
 // ─── PHYSICS UPDATE LOOP ───────────────────────────────────────────────
 setInterval(() => {
+  // Update regular lobbies
   for (const [lobbyCode, lobbyWorld] of lobbies.entries()) {
     Engine.update(lobbyWorld.engine, 1000 / 60);
     const floorY = lobbyWorld.canvasSize.height + WALL_THICKNESS / 2;
@@ -211,6 +231,53 @@ setInterval(() => {
       anchors: lobbyWorld.anchoredBodies.map(({ C }) => C.pointA)
     });
   }
+  
+  // Update global lobby
+  if (globalLobby) {
+    Engine.update(globalLobby.engine, 1000 / 60);
+    const floorY = globalLobby.canvasSize.height + WALL_THICKNESS / 2;
+    
+    // Track which objects are being dragged by clients
+    const draggedObjects = new Set();
+    for (const socket of globalLobby.sockets) {
+      if (socket.ownedObjects) {
+        socket.ownedObjects.forEach(id => draggedObjects.add(id));
+      }
+    }
+    
+    for (const b of globalLobby.DYNAMIC_BODIES) {
+      // Only respawn objects that aren't being dragged
+      if (!draggedObjects.has(b.label) && b.position.y > floorY + RESPAWN_MARGIN) {
+        Body.setPosition(b, { x: 300, y: 100 });
+        Body.setVelocity(b, { x: 0, y: 0 });
+        Body.setAngularVelocity(b, 0);
+        Body.setAngle(b, 0);
+      }
+    }
+    
+    io.to('GLOBAL').emit('state', {
+      bodies: globalLobby.bodies.map(({ body, renderHint }) => ({
+        id: body.label,
+        x: body.position.x,
+        y: body.position.y,
+        angle: body.angle,
+        image: renderHint.image,
+        width: renderHint.width,
+        height: renderHint.height
+      })),
+      anchors: globalLobby.anchoredBodies.map(({ C }) => C.pointA)
+    });
+  }
 }, 1000 / 60);
+
+// ─── HTTP ROUTES ─────────────────────────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', lobbies: lobbies.size });
+});
+
+app.get('/api/global-player-count', (req, res) => {
+  const count = globalLobby ? globalLobby.sockets.size : 0;
+  res.json({ count });
+});
 
 server.listen(3080, () => console.log('Server on https://iotservice.nl:3080'));

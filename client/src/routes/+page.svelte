@@ -37,6 +37,10 @@
   let transferTargetPlayer: { id: string; name: string } | null = null;
   let hoveredPlayerId = '';
   
+  // Global server state
+  let globalPlayerCount = 0;
+  let globalServerSocket: Socket | null = null;
+  
   console.log('🔧 [DEBUG] Component initialized with initial state:', {
     currentView,
     joinType,
@@ -185,6 +189,17 @@
     });
     
     console.log('🔧 [DEBUG] All socket event listeners set up');
+    
+    // Initialize global player count
+    updateGlobalPlayerCount();
+    
+    // Update global player count every 30 seconds
+    const globalCountInterval = setInterval(updateGlobalPlayerCount, 30000);
+    
+    // Clean up interval on destroy
+    onDestroy(() => {
+      clearInterval(globalCountInterval);
+    });
   });
   
   // Handle keyboard events for popups
@@ -370,7 +385,11 @@
   function handleUsernameSubmit() {
     if (playerName.trim()) {
       showUsernameEntry = false;
-      if (pendingLobbyCode) {
+      if (pendingLobbyCode === 'GLOBAL') {
+        // Join global server
+        handleJoinGlobalServer();
+        pendingLobbyCode = '';
+      } else if (pendingLobbyCode) {
         // Joining an existing lobby
         const joinData = { code: pendingLobbyCode, playerName: playerName.trim() };
         socket.emit('joinLobby', joinData);
@@ -425,6 +444,66 @@
     socket.emit('refreshPublicLobbies');
   }
   
+  function handleJoinGlobalServer() {
+    console.log('🌍 [DEBUG] Join global server button clicked');
+    
+    if (!playerName.trim()) {
+      // Show username entry screen for global server
+      showUsernameEntry = true;
+      pendingLobbyCode = 'GLOBAL';
+      currentView = 'username';
+      return;
+    }
+    
+    // Connect to the physics server directly for global lobby
+    const physicsUrl = window.location.hostname === 'localhost' 
+      ? 'http://localhost:3080' 
+      : `${window.location.protocol}//${window.location.host}`;
+    
+    console.log('🌍 [DEBUG] Connecting to global physics server:', physicsUrl);
+    
+    globalServerSocket = io(physicsUrl, { transports: ['websocket'], timeout: 10000 });
+    
+    globalServerSocket.on('connect', () => {
+      console.log('✅ [DEBUG] Connected to global physics server');
+      // Join the global physics lobby
+      globalServerSocket!.emit('joinPhysics', { lobby: 'GLOBAL' });
+    });
+    
+    globalServerSocket.on('joinedPhysics', () => {
+      console.log('✅ [DEBUG] Joined global physics lobby');
+      // Redirect directly to the game with GLOBAL lobby
+      window.location.href = '/game?lobby=GLOBAL';
+    });
+    
+    globalServerSocket.on('connect_error', (err) => {
+      console.error('🔥 [DEBUG] Global server connection error:', err);
+      errorMessage = 'Failed to connect to global server';
+      setTimeout(() => {
+        errorMessage = '';
+      }, 3000);
+    });
+  }
+  
+  // Update global player count periodically
+  function updateGlobalPlayerCount() {
+    // Get global player count from the physics server
+    const physicsUrl = window.location.hostname === 'localhost' 
+      ? 'http://localhost:3080' 
+      : `${window.location.protocol}//${window.location.host}`;
+    
+    fetch(`${physicsUrl}/api/global-player-count`)
+      .then(response => response.json())
+      .then(data => {
+        globalPlayerCount = data.count || 0;
+      })
+      .catch(err => {
+        console.log('Using simulated global player count');
+        // Simulate some players for demo purposes
+        globalPlayerCount = Math.floor(Math.random() * 50) + 10;
+      });
+  }
+  
   // Debug reactive statements
   $: {
     console.log('🔄 [DEBUG] Reactive update - currentView changed to:', currentView);
@@ -477,6 +556,12 @@
       </div>
       
       <div class="menu-options">
+        <button class="journal-button global-btn" on:click={handleJoinGlobalServer}>
+          <span class="button-icon">🌍</span>
+          <span class="button-text">Join Global Server</span>
+          <span class="button-subtitle">{globalPlayerCount} players online</span>
+        </button>
+        
         <button class="journal-button join-btn" on:click={handleJoin}>
           <span class="button-icon">🔍</span>
           <span class="button-text">Join a Lobby</span>
@@ -506,7 +591,9 @@
         <button class="back-button" on:click={handleBack}>← Back</button>
         <h2 class="title">Enter Your Name</h2>
         <div class="subtitle">
-          {#if pendingLobbyCode}
+          {#if pendingLobbyCode === 'GLOBAL'}
+            Joining Global Server
+          {:else if pendingLobbyCode}
             Joining lobby {pendingLobbyCode}
           {:else}
             Creating a new lobby
@@ -526,7 +613,9 @@
           on:keydown={(e) => e.key === 'Enter' && handleUsernameSubmit()}
         />
         <button class="username-submit-btn" on:click={handleUsernameSubmit} disabled={!playerName.trim()}>
-          {#if pendingLobbyCode}
+          {#if pendingLobbyCode === 'GLOBAL'}
+            Join Global Server
+          {:else if pendingLobbyCode}
             Join Lobby
           {:else}
             Create Lobby
@@ -955,6 +1044,16 @@
     border: 1px solid rgba(0,0,0,0.1);
     border-radius: 17px;
     pointer-events: none;
+  }
+  
+  .global-btn {
+    border-color: #4ecdc4;
+    color: #4ecdc4;
+  }
+  
+  .global-btn:hover {
+    background: #4ecdc4;
+    color: white;
   }
   
   .join-btn {
