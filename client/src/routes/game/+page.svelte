@@ -657,6 +657,11 @@
 		
 		return { x: clampedX, y: clampedY };
 	}
+
+	function handleSkipLevel() {
+		console.log('Skip level button clicked');
+		safeEmit('skipLevel');
+	}
 </script>
 
 <div class="game-container">
@@ -697,6 +702,13 @@
 					<span class="info-label">🎉 Level Complete!</span>
 				</div>
 			{/if}
+		</div>
+		
+		<!-- Development skip level button -->
+		<div class="dev-panel">
+			<button class="skip-level-btn" on:click={handleSkipLevel}>
+				⏭️ Skip Level
+			</button>
 		</div>
 	</div>
 </div>
@@ -854,5 +866,36 @@
 			font-size: 0.9rem;
 		}
 
+	}
+
+	.dev-panel {
+		position: absolute;
+		top: 0;
+		right: 0;
+		pointer-events: auto;
+	}
+
+	.skip-level-btn {
+		background: rgba(255, 193, 7, 0.9);
+		color: #333;
+		border: 2px solid #ff9800;
+		border-radius: 10px;
+		padding: 8px 12px;
+		cursor: pointer;
+		font-family: 'Comic Neue', cursive;
+		font-size: 0.9rem;
+		font-weight: 600;
+		transition: all 0.3s ease;
+		box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+	}
+
+	.skip-level-btn:hover {
+		background: rgba(255, 193, 7, 1);
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+	}
+
+	.skip-level-btn:active {
+		transform: translateY(0);
 	}
 </style>

@@ -2,7 +2,10 @@
   "gameConfig": {
     "ballStartLocation": { "x": 100, "y": 500 },
     "ballRadius": 15,
-    "ballMass": 0.8,
+    "ballMass": 1.0,
+    "ballRestitution": 0.6,
+    "ballFriction": 0.005,
+    "ballFrictionAir": 0.001,
     "ballImage": "/images/ball.png",
     "ballWidth": 30,
     "ballHeight": 30,

@@ -45,8 +45,18 @@ function getGlobalLobby() {
 }
 
 function createLobbyWorld(lobbyCode) {
-  const engine = Engine.create();
+  const engine = Engine.create({
+    // Optimize for smooth ball rolling
+    positionIterations: 6,
+    velocityIterations: 4,
+    constraintIterations: 2,
+    enableSleeping: false // Keep objects active for better responsiveness
+  });
   const world = engine.world;
+  
+  // Configure world for better ball physics
+  world.gravity.y = 1; // Slightly reduced gravity for smoother rolling
+  
   let canvasSize = { width: 2048, height: 1024 }; // 2:1 aspect ratio
   let walls = { left: null, right: null, bottom: null };
   let bodies = [], DYNAMIC_BODIES = [];
@@ -79,7 +89,7 @@ function createLobbyWorld(lobbyCode) {
     goal = null;
     
     // Load scene data
-    const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
+  const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
     const levels = sceneData.levels;
     
     if (levelIndex >= levels.length) {
@@ -99,8 +109,9 @@ function createLobbyWorld(lobbyCode) {
     const ballStart = levelData.ballStartLocation;
     gameBall = Bodies.circle(ballStart.x, ballStart.y, ballConfig.ballRadius, {
       mass: ballConfig.ballMass,
-      restitution: 0.8,
-      friction: 0.1,
+      restitution: ballConfig.ballRestitution || 0.6,
+      friction: ballConfig.ballFriction || 0.005,
+      frictionAir: ballConfig.ballFrictionAir || 0.001,
       label: 'gameBall'
     });
     World.add(world, gameBall);
@@ -132,7 +143,7 @@ function createLobbyWorld(lobbyCode) {
               isStatic: true,
               label: obj.id
             });
-          }
+    }
         } else if (obj.type === 'flipper') {
           // Create flipper as a dynamic body with constraint
           body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
@@ -194,15 +205,17 @@ function createLobbyWorld(lobbyCode) {
         if (obj.shape === 'rectangle') {
           body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
             mass: obj.mass || 1,
-            restitution: 0.3,
+            restitution: 0.4,
             friction: 0.1,
+            frictionAir: 0.001,
             label: obj.id
           });
         } else if (obj.shape === 'circle') {
           body = Bodies.circle(obj.x, obj.y, obj.radius, {
             mass: obj.mass || 1,
-            restitution: 0.3,
+            restitution: 0.4,
             friction: 0.1,
+            frictionAir: 0.001,
             label: obj.id
           });
         }
@@ -254,8 +267,8 @@ function createLobbyWorld(lobbyCode) {
             }
           }
         }
-      }
-    });
+          }
+        });
   }
   
   // Load first level
@@ -314,16 +327,16 @@ io.on('connection', socket => {
     if (lobbyWorld.grabbableBodies.has(id)) {
       const entry = lobbyWorld.grabbableBodies.get(id);
       const body = entry.body;
-      
+    
       // Store drag data for this client
-      const initialAngle = body.angle;
-      socket.dragData = {
-        body: body,
-        initialAngle: initialAngle,
-        offsetX: x - body.position.x,
-        offsetY: y - body.position.y
-      };
-      
+    const initialAngle = body.angle;
+    socket.dragData = {
+      body: body,
+      initialAngle: initialAngle,
+      offsetX: x - body.position.x,
+      offsetY: y - body.position.y
+    };
+    
       console.log(`Client ${socket.id} started dragging grabbable object ${id}`);
     }
   });
@@ -382,6 +395,22 @@ io.on('connection', socket => {
     socket.to(lobbyCode).emit('mouseRemoved', { id: socket.id });
   });
 
+  socket.on('skipLevel', () => {
+    if (!lobbyWorld) return;
+    console.log(`Client ${socket.id} requested to skip level ${lobbyWorld.currentLevel + 1}`);
+    
+    // Trigger level transition immediately
+    lobbyWorld.gameState = 'levelComplete';
+    
+    // Load next level after a short delay
+    setTimeout(() => {
+      if (lobbyWorld.gameState === 'levelComplete') {
+        lobbyWorld.gameState = 'transitioning';
+        lobbyWorld.loadLevel(lobbyWorld.currentLevel + 1);
+      }
+    }, 500);
+  });
+
   socket.on('disconnect', () => {
     if (lobbyWorld) {
       // Clean up any drag data
@@ -403,8 +432,8 @@ io.on('connection', socket => {
 setInterval(() => {
   // Update regular lobbies
   for (const [lobbyCode, lobbyWorld] of lobbies.entries()) {
-    // Run physics simulation on all objects
-    Engine.update(lobbyWorld.engine, 1000 / 60);
+    // Run physics simulation on all objects at 120fps for smoother ball physics
+    Engine.update(lobbyWorld.engine, 1000 / 120);
     
     const floorY = lobbyWorld.canvasSize.height + WALL_THICKNESS / 2;
     
@@ -430,18 +459,18 @@ setInterval(() => {
       Body.setPosition(lobbyWorld.gameBall, { x: ballStart.x, y: ballStart.y });
       Body.setVelocity(lobbyWorld.gameBall, { x: 0, y: 0 });
       Body.setAngularVelocity(lobbyWorld.gameBall, 0);
-    }
+      }
     
     // Send state to clients
     io.to(lobbyCode).emit('state', {
       bodies: lobbyWorld.bodies.map(({ body, renderHint }) => ({
-        id: body.label,
-        x: body.position.x,
-        y: body.position.y,
-        angle: body.angle,
-        image: renderHint.image,
-        width: renderHint.width,
-        height: renderHint.height,
+          id: body.label,
+          x: body.position.x,
+          y: body.position.y,
+          angle: body.angle,
+          image: renderHint.image,
+          width: renderHint.width,
+          height: renderHint.height,
         type: renderHint.type,
         isSensor: body.isSensor
       })),
@@ -482,8 +511,8 @@ setInterval(() => {
   
   // Update global lobby
   if (globalLobby) {
-    // Run physics simulation on all objects
-    Engine.update(globalLobby.engine, 1000 / 60);
+    // Run physics simulation on all objects at 120fps for smoother ball physics
+    Engine.update(globalLobby.engine, 1000 / 120);
     
     const floorY = globalLobby.canvasSize.height + WALL_THICKNESS / 2;
     
@@ -509,18 +538,18 @@ setInterval(() => {
       Body.setPosition(globalLobby.gameBall, { x: ballStart.x, y: ballStart.y });
       Body.setVelocity(globalLobby.gameBall, { x: 0, y: 0 });
       Body.setAngularVelocity(globalLobby.gameBall, 0);
-    }
+      }
     
     // Send state to clients
     io.to('GLOBAL').emit('state', {
       bodies: globalLobby.bodies.map(({ body, renderHint }) => ({
-        id: body.label,
-        x: body.position.x,
-        y: body.position.y,
-        angle: body.angle,
-        image: renderHint.image,
-        width: renderHint.width,
-        height: renderHint.height,
+          id: body.label,
+          x: body.position.x,
+          y: body.position.y,
+          angle: body.angle,
+          image: renderHint.image,
+          width: renderHint.width,
+          height: renderHint.height,
         type: renderHint.type,
         isSensor: body.isSensor
       })),
@@ -558,7 +587,7 @@ setInterval(() => {
       levelData: globalLobby.levelData
     });
   }
-}, 1000 / 60);
+}, 1000 / 120);
 
 // ─── HTTP ROUTES ─────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
