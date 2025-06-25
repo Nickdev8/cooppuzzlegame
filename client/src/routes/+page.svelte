@@ -735,7 +735,7 @@
   {#if currentView === 'main'}
     <div class="journal-page main-menu">
       <div class="page-header">
-        <h1 class="title">🎮 Coop Puzzle Game</h1>
+        <h1 class="title">Coop Puzzle Game</h1>
         <div class="subtitle">Find your puzzle buddies!</div>
       </div>
       

@@ -54,12 +54,6 @@
 	let lobbyCode: string | null = null;
 	let joinedPhysics = false;
 
-	// Client-side object ownership for better latency
-	let ownedObjects: Set<string> = new Set();
-	let localObjectPositions: Record<string, { x: number; y: number; angle: number }> = {};
-	// Always enable client-side ownership for smooth dragging
-	const clientSideOwnershipEnabled = true;
-
 	const log = (...args: any[]) => console.log(...args);
 	// const log = (...args: any[]) => {};
 
@@ -106,26 +100,7 @@
 				safeEmit('mouseLeave');
 			}
 			if (dragging && dragId) {
-				// Always update local position immediately for owned objects for smooth dragging
-				if (ownedObjects.has(dragId)) {
-					const newX = x - dragOffset.x;
-					const newY = y - dragOffset.y;
-					// Preserve the initial rotation from when we started dragging
-					const initialAngle = localObjectPositions[dragId]?.angle || 0;
-					localObjectPositions[dragId] = { 
-						x: newX, 
-						y: newY, 
-						angle: initialAngle
-					};
-					// Update the object position for immediate visual feedback
-					if (objects[dragId]) {
-						objects[dragId].x = newX;
-						objects[dragId].y = newY;
-						// Keep the initial rotation
-						objects[dragId].angle = initialAngle;
-					}
-					draw(); // Redraw immediately for smooth dragging
-				}
+				// Only send drag events to server - no client-side position updates
 				safeEmit('drag', { x, y });
 			}
 		} catch (err) {
@@ -147,9 +122,6 @@
 				y: mouseVelocity.y * 0.3
 			};
 			
-			// Always release ownership of the object when dragging ends
-			ownedObjects.delete(dragId);
-			delete localObjectPositions[dragId];
 			safeEmit('endDrag', { velocity: throwVelocity });
 			dragging = false;
 			dragId = null;
@@ -195,9 +167,9 @@
 			}
 			
 			if (isHit) {
-				// Check if object has anchors - if so, don't allow client-side dragging
+				// Check if object has anchors - if so, don't allow dragging
 				if (o.hasAnchors) {
-					log('   • Object has anchors, cannot be dragged by client:', id);
+					log('   • Object has anchors, cannot be dragged:', id);
 					continue;
 				}
 				hit = true;
@@ -206,28 +178,19 @@
 				// Calculate offset from mouse to object center
 				dragOffset.x = dx;
 				dragOffset.y = dy;
-				// Always take ownership of the object for smooth dragging
-				ownedObjects.add(id);
-				// Store the initial rotation to preserve it during dragging
-				const initialAngle = o.angle;
-				localObjectPositions[id] = { x: o.x, y: o.y, angle: initialAngle };
 				
 				// Initialize mouse tracking for throwing
 				lastMousePos = { x: mx, y: my };
 				lastMouseTime = performance.now();
 				mouseVelocity = { x: 0, y: 0 };
 				
-				log('   • startDrag on', id, { mx, my, dragOffset, width: o.width, height: o.height, initialAngle });
+				log('   • startDrag on', id, { mx, my, dragOffset, width: o.width, height: o.height });
 				safeEmit('startDrag', { id, x: mx, y: my });
 				break;
 			}
 		}
 		if (!hit && dragging) {
 			log('   • endDrag (missed hit)', { dragId });
-			if (dragId) {
-				ownedObjects.delete(dragId);
-				delete localObjectPositions[dragId];
-			}
 			safeEmit('endDrag');
 			dragging = false;
 			dragId = null;
@@ -475,29 +438,10 @@
 
 		// update
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			// Always update all objects from server, but preserve client-side position for objects we're currently dragging
+			// Always use server state for all objects - no client-side position preservation
 			payload.bodies.forEach((o) => {
-				if (objects[o.id]) {
-					// If we're currently dragging this object, keep our position and rotation
-					if (ownedObjects.has(o.id) && !o.hasAnchors) {
-						// Keep our local position and initial rotation - don't apply server rotation updates
-						const localPos = localObjectPositions[o.id];
-						if (localPos) {
-							objects[o.id].x = localPos.x;
-							objects[o.id].y = localPos.y;
-							objects[o.id].angle = localPos.angle; // Keep initial rotation
-						}
-						log(`[state] Preserving local state for dragged ${o.id}: angle=${localPos?.angle.toFixed(3)}`);
-					} else {
-						// Full update for non-dragged objects or objects with anchors
-						objects[o.id] = o;
-						log(`[state] Full update for ${o.id}: angle=${o.angle.toFixed(3)}`);
-					}
-				} else {
-					// New object - always use server state
-					objects[o.id] = o;
-					log(`[state] New object ${o.id}: angle=${o.angle.toFixed(3)}`);
-				}
+				objects[o.id] = o;
+				log(`[state] Updated ${o.id}: angle=${o.angle.toFixed(3)}, pos=(${o.x.toFixed(1)}, ${o.y.toFixed(1)})`);
 			});
 
 			anchors = payload.anchors;

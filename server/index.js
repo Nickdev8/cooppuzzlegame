@@ -17,7 +17,6 @@ const io = new Server(server, { cors: { origin: '*' } });
 const WALL_THICKNESS = 10;
 const RESPAWN_MARGIN = 50;
 const SCENE_FILE = path.join(__dirname, 'scene.json');
-const CLIENT_SIDE_OWNERSHIP_ENABLED = false;
 
 // ─── LOBBY PHYSICS SUPPORT ─────────────────────────────────────────────
 const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, interval, sockets: Set }
@@ -134,14 +133,13 @@ function getLobbyWorld(lobbyCode) {
 io.on('connection', socket => {
   let lobbyCode = null;
   let lobbyWorld = null;
-  socket.ownedObjects = new Set(); // Track objects owned by this client
 
   socket.on('joinPhysics', ({ lobby }) => {
     lobbyCode = lobby;
     lobbyWorld = getLobbyWorld(lobbyCode);
     lobbyWorld.sockets.add(socket);
     socket.join(lobbyCode);
-    socket.emit('joinedPhysics', { clientSideOwnershipEnabled: CLIENT_SIDE_OWNERSHIP_ENABLED });
+    socket.emit('joinedPhysics', { clientSideOwnershipEnabled: false });
   });
 
   socket.on('startDrag', ({ id, x, y }) => {
@@ -155,10 +153,7 @@ io.on('connection', socket => {
       return;
     }
     
-    // Allow any client to drag any object - mark this object as owned by this client
-    socket.ownedObjects.add(id);
-    
-    // Store the initial angle to preserve rotation
+    // Store drag data for this client
     const body = entry.body;
     const initialAngle = body.angle;
     socket.dragData = {
@@ -208,8 +203,6 @@ io.on('connection', socket => {
       // Clear drag data
       socket.dragData = null;
     }
-    // Clear ownership when drag ends
-    socket.ownedObjects.clear();
     console.log(`Client ${socket.id} stopped dragging`);
   });
 
@@ -273,8 +266,6 @@ io.on('connection', socket => {
       
       lobbyWorld.sockets.delete(socket);
       socket.to(lobbyCode).emit('mouseRemoved', { id: socket.id });
-      // Clear any owned objects when client disconnects
-      socket.ownedObjects.clear();
       if (lobbyWorld.sockets.size === 0) {
         // Clean up lobby world
         lobbies.delete(lobbyCode);
@@ -287,39 +278,14 @@ io.on('connection', socket => {
 setInterval(() => {
   // Update regular lobbies
   for (const [lobbyCode, lobbyWorld] of lobbies.entries()) {
-    // Track which objects are being dragged by clients
-    const draggedObjects = new Set();
-    for (const socket of lobbyWorld.sockets) {
-      if (socket.ownedObjects) {
-        socket.ownedObjects.forEach(id => draggedObjects.add(id));
-      }
-    }
-    
-    // Temporarily disable physics for dragged objects
-    const draggedBodies = [];
-    for (const b of lobbyWorld.DYNAMIC_BODIES) {
-      if (draggedObjects.has(b.label)) {
-        // Remove from world temporarily to prevent physics simulation
-        World.remove(lobbyWorld.world, b);
-        draggedBodies.push(b);
-        console.log(`[physics] Removed ${b.label} from physics simulation (being dragged)`);
-      }
-    }
-    
-    // Run physics simulation only on non-dragged objects
+    // Run physics simulation on all objects
     Engine.update(lobbyWorld.engine, 1000 / 60);
-    
-    // Re-add dragged objects to world
-    for (const b of draggedBodies) {
-      World.add(lobbyWorld.world, b);
-      console.log(`[physics] Re-added ${b.label} to physics simulation`);
-    }
     
     const floorY = lobbyWorld.canvasSize.height + WALL_THICKNESS / 2;
     
     for (const b of lobbyWorld.DYNAMIC_BODIES) {
-      // Only respawn objects that aren't being dragged
-      if (!draggedObjects.has(b.label) && b.position.y > floorY + RESPAWN_MARGIN) {
+      // Respawn objects that fall below screen
+      if (b.position.y > floorY + RESPAWN_MARGIN) {
         // Respawn at 15% from left, 2% from top of canvas
         const respawnX = lobbyWorld.canvasSize.width * 0.15;
         const respawnY = lobbyWorld.canvasSize.height * 0.02;
@@ -353,39 +319,14 @@ setInterval(() => {
   
   // Update global lobby
   if (globalLobby) {
-    // Track which objects are being dragged by clients
-    const draggedObjects = new Set();
-    for (const socket of globalLobby.sockets) {
-      if (socket.ownedObjects) {
-        socket.ownedObjects.forEach(id => draggedObjects.add(id));
-      }
-    }
-    
-    // Temporarily disable physics for dragged objects
-    const draggedBodies = [];
-    for (const b of globalLobby.DYNAMIC_BODIES) {
-      if (draggedObjects.has(b.label)) {
-        // Remove from world temporarily to prevent physics simulation
-        World.remove(globalLobby.world, b);
-        draggedBodies.push(b);
-        console.log(`[physics] Removed ${b.label} from physics simulation (being dragged)`);
-      }
-    }
-    
-    // Run physics simulation only on non-dragged objects
+    // Run physics simulation on all objects
     Engine.update(globalLobby.engine, 1000 / 60);
-    
-    // Re-add dragged objects to world
-    for (const b of draggedBodies) {
-      World.add(globalLobby.world, b);
-      console.log(`[physics] Re-added ${b.label} to physics simulation`);
-    }
     
     const floorY = globalLobby.canvasSize.height + WALL_THICKNESS / 2;
     
     for (const b of globalLobby.DYNAMIC_BODIES) {
-      // Only respawn objects that aren't being dragged
-      if (!draggedObjects.has(b.label) && b.position.y > floorY + RESPAWN_MARGIN) {
+      // Respawn objects that fall below screen
+      if (b.position.y > floorY + RESPAWN_MARGIN) {
         // Respawn at 15% from left, 2% from top of canvas
         const respawnX = globalLobby.canvasSize.width * 0.15;
         const respawnY = globalLobby.canvasSize.height * 0.02;
