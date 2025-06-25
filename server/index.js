@@ -6,7 +6,7 @@ const path = require('path');
 const { Server } = require('socket.io');
 const Matter = require('matter-js');
 
-const { Engine, World, Bodies, Body, Constraint } = Matter;
+const { Engine, World, Bodies, Body, Constraint, Events } = Matter;
 
 const app = express();
 app.use(cors());
@@ -19,7 +19,7 @@ const RESPAWN_MARGIN = 50;
 const SCENE_FILE = path.join(__dirname, 'scene.json');
 
 // ─── LOBBY PHYSICS SUPPORT ─────────────────────────────────────────────
-const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, interval, sockets: Set }
+const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, grabbableBodies, walls, canvasSize, interval, sockets: Set, currentLevel, gameState }
 
 // Global lobby for unlimited players
 let globalLobby = null;
@@ -49,8 +49,13 @@ function createLobbyWorld(lobbyCode) {
   const world = engine.world;
   let canvasSize = { width: 2048, height: 1024 }; // 2:1 aspect ratio
   let walls = { left: null, right: null, bottom: null };
-  let anchoredBodies = [];
   let bodies = [], DYNAMIC_BODIES = [];
+  let grabbableBodies = new Map(); // id -> { body, respawnLocation, originalData }
+  let gameBall = null;
+  let goal = null;
+  let currentLevel = 0;
+  let gameState = 'playing'; // 'playing', 'levelComplete', 'transitioning'
+  let levelData = null;
 
   function recreateWalls() {
     if (walls.left) World.remove(world, [walls.left, walls.right, walls.bottom]);
@@ -63,60 +68,213 @@ function createLobbyWorld(lobbyCode) {
   }
   recreateWalls();
 
-  const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
-  for (const cfg of sceneData) {
-    let baseX, baseY;
-    if (cfg.screen) {
-      baseX = canvasSize.width * (cfg.screen.xPercent ?? 0) + (cfg.offset?.x || 0);
-      baseY = canvasSize.height * (cfg.screen.yPercent ?? 0) + (cfg.offset?.y || 0);
-    } else {
-      baseX = cfg.x;
-      baseY = cfg.y;
+  function loadLevel(levelIndex) {
+    // Clear existing level
+    World.clear(world, false);
+    recreateWalls();
+    bodies = [];
+    DYNAMIC_BODIES = [];
+    grabbableBodies.clear();
+    gameBall = null;
+    goal = null;
+    
+    // Load scene data
+    const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
+    const levels = sceneData.levels;
+    
+    if (levelIndex >= levels.length) {
+      console.log('All levels completed!');
+      gameState = 'completed';
+      return;
     }
-    const opts = {
-      mass: cfg.mass ?? 1,
-      restitution: cfg.restitution ?? 0.2,
-      friction: cfg.friction ?? 0.1
-    };
-    let b;
-    if (cfg.type === 'circle') {
-      b = Bodies.circle(baseX, baseY, cfg.radius, opts);
-    } else if (cfg.type === 'rectangle') {
-      b = Bodies.rectangle(baseX, baseY, cfg.width, cfg.height, opts);
-    } else {
-      continue;
-    }
-    b.label = cfg.id;
-    World.add(world, b);
-    bodies.push({ body: b, renderHint: cfg });
-    DYNAMIC_BODIES.push(b);
-    if (Array.isArray(cfg.fixedPoints)) {
-      const w = cfg.width ?? cfg.radius * 2;
-      const h = cfg.height ?? cfg.radius * 2;
-      for (const fp of cfg.fixedPoints) {
-        const localX = fp.offsetX != null ? fp.offsetX : (fp.percentX ?? 0) * w;
-        const localY = fp.offsetY != null ? fp.offsetY : (fp.percentY ?? 0) * h;
-        const halfW = w / 2;
-        const halfH = h / 2;
-        const worldX = baseX + (localX - halfW);
-        const worldY = baseY + (localY - halfH);
-        const C = Constraint.create({
-          pointA: { x: worldX, y: worldY },
-          bodyB: b,
-          pointB: { x: localX - halfW, y: localY - halfH },
-          length: 0,
-          stiffness: fp.stiffness ?? 0.9,
-          damping: fp.damping ?? 0.8,
-          render: {
-            visible: false
+    
+    levelData = levels[levelIndex];
+    currentLevel = levelIndex;
+    gameState = 'playing';
+    
+    console.log(`Loading level ${levelIndex + 1}: ${levelData.name}`);
+    
+    // Create game ball
+    const ballConfig = sceneData.gameConfig;
+    const ballStart = levelData.ballStartLocation;
+    gameBall = Bodies.circle(ballStart.x, ballStart.y, ballConfig.ballRadius, {
+      mass: ballConfig.ballMass,
+      restitution: 0.8,
+      friction: 0.1,
+      label: 'gameBall'
+    });
+    World.add(world, gameBall);
+    DYNAMIC_BODIES.push(gameBall);
+    
+    // Create goal
+    const goalLocation = levelData.goalLocation;
+    goal = Bodies.circle(goalLocation.x, goalLocation.y, ballConfig.goalRadius, {
+      isStatic: true,
+      isSensor: true,
+      label: 'goal'
+    });
+    World.add(world, goal);
+    
+    // Create static objects
+    if (levelData.objects) {
+      levelData.objects.forEach(obj => {
+        let body;
+        
+        if (obj.type === 'static') {
+          if (obj.shape === 'rectangle') {
+            body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
+              isStatic: true,
+              angle: obj.angle || 0,
+              label: obj.id
+            });
+          } else if (obj.shape === 'circle') {
+            body = Bodies.circle(obj.x, obj.y, obj.radius, {
+              isStatic: true,
+              label: obj.id
+            });
           }
-        });
-        World.add(world, C);
-        anchoredBodies.push({ cfg, C, fp });
-      }
+        } else if (obj.type === 'flipper') {
+          // Create flipper as a dynamic body with constraint
+          body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
+            mass: 1,
+            label: obj.id
+          });
+          
+          const constraint = Constraint.create({
+            pointA: obj.pivotPoint,
+            bodyB: body,
+            pointB: { x: 0, y: 0 },
+            stiffness: 0.8,
+            damping: 0.5
+          });
+          
+          World.add(world, [body, constraint]);
+          DYNAMIC_BODIES.push(body);
+        } else if (obj.type === 'hoop') {
+          // Create hoop as a sensor
+          body = Bodies.circle(obj.x, obj.y, obj.radius, {
+            isStatic: true,
+            isSensor: true,
+            label: obj.id
+          });
+        } else if (obj.type === 'switch') {
+          // Create switch as a sensor
+          body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
+            isStatic: true,
+            isSensor: true,
+            label: obj.id
+          });
+        } else if (obj.type === 'gate') {
+          // Create gate as a static body
+          body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
+            isStatic: true,
+            label: obj.id
+          });
+        } else if (obj.type === 'gap') {
+          // Create gap as a sensor (for visual purposes)
+          body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
+            isStatic: true,
+            isSensor: true,
+            label: obj.id
+          });
+        }
+        
+        if (body) {
+          World.add(world, body);
+          bodies.push({ body: body, renderHint: obj });
+        }
+      });
     }
+    
+    // Create grabbable objects
+    if (levelData.grabbableObjects) {
+      levelData.grabbableObjects.forEach(obj => {
+        let body;
+        
+        if (obj.shape === 'rectangle') {
+          body = Bodies.rectangle(obj.x, obj.y, obj.width, obj.height, {
+            mass: obj.mass || 1,
+            restitution: 0.3,
+            friction: 0.1,
+            label: obj.id
+          });
+        } else if (obj.shape === 'circle') {
+          body = Bodies.circle(obj.x, obj.y, obj.radius, {
+            mass: obj.mass || 1,
+            restitution: 0.3,
+            friction: 0.1,
+            label: obj.id
+          });
+        }
+        
+        if (body) {
+          World.add(world, body);
+          DYNAMIC_BODIES.push(body);
+          grabbableBodies.set(obj.id, {
+            body: body,
+            respawnLocation: obj.respawnLocation,
+            originalData: obj
+          });
+        }
+      });
+    }
+    
+    // Set up collision detection
+    Events.on(engine, 'collisionStart', (event) => {
+      const pairs = event.pairs;
+      
+      for (let i = 0; i < pairs.length; i++) {
+        const bodyA = pairs[i].bodyA;
+        const bodyB = pairs[i].bodyB;
+        
+        // Check for goal collision
+        if ((bodyA.label === 'gameBall' && bodyB.label === 'goal') ||
+            (bodyA.label === 'goal' && bodyB.label === 'gameBall')) {
+          console.log('Goal reached! Level complete!');
+          gameState = 'levelComplete';
+          // Trigger level transition after a delay
+          setTimeout(() => {
+            if (gameState === 'levelComplete') {
+              gameState = 'transitioning';
+              loadLevel(currentLevel + 1);
+            }
+          }, 2000);
+        }
+        
+        // Check for flipper activation
+        if (bodyA.label === 'flipper' || bodyB.label === 'flipper') {
+          const flipper = bodyA.label === 'flipper' ? bodyA : bodyB;
+          const other = bodyA.label === 'flipper' ? bodyB : bodyA;
+          
+          if (other.label === 'gameBall') {
+            // Activate flipper
+            const flipperData = levelData.objects.find(obj => obj.id === flipper.label);
+            if (flipperData && flipperData.power) {
+              Body.setAngularVelocity(flipper, flipperData.power);
+            }
+          }
+        }
+      }
+    });
   }
-  return { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, sockets: new Set() };
+  
+  // Load first level
+  loadLevel(0);
+  
+  return { 
+    engine, 
+    world, 
+    bodies, 
+    DYNAMIC_BODIES, 
+    grabbableBodies, 
+    walls, 
+    canvasSize, 
+    sockets: new Set(),
+    currentLevel,
+    gameState,
+    levelData,
+    loadLevel
+  };
 }
 
 function getLobbyWorld(lobbyCode) {
@@ -140,30 +298,34 @@ io.on('connection', socket => {
     lobbyWorld.sockets.add(socket);
     socket.join(lobbyCode);
     socket.emit('joinedPhysics', { clientSideOwnershipEnabled: false });
+    
+    // Send current level info
+    socket.emit('levelInfo', {
+      currentLevel: lobbyWorld.currentLevel,
+      levelData: lobbyWorld.levelData,
+      gameState: lobbyWorld.gameState
+    });
   });
 
   socket.on('startDrag', ({ id, x, y }) => {
     if (!lobbyWorld) return;
-    const entry = lobbyWorld.bodies.find(o => o.renderHint.id === id);
-    if (!entry) return;
     
-    // Check if object has anchors - if so, don't allow dragging
-    if (Array.isArray(entry.renderHint.fixedPoints) && entry.renderHint.fixedPoints.length > 0) {
-      console.log('Client attempted to drag anchored object:', id);
-      return;
+    // Check if it's a grabbable object
+    if (lobbyWorld.grabbableBodies.has(id)) {
+      const entry = lobbyWorld.grabbableBodies.get(id);
+      const body = entry.body;
+      
+      // Store drag data for this client
+      const initialAngle = body.angle;
+      socket.dragData = {
+        body: body,
+        initialAngle: initialAngle,
+        offsetX: x - body.position.x,
+        offsetY: y - body.position.y
+      };
+      
+      console.log(`Client ${socket.id} started dragging grabbable object ${id}`);
     }
-    
-    // Store drag data for this client
-    const body = entry.body;
-    const initialAngle = body.angle;
-    socket.dragData = {
-      body: body,
-      initialAngle: initialAngle,
-      offsetX: x - body.position.x,
-      offsetY: y - body.position.y
-    };
-    
-    console.log(`Client ${socket.id} started dragging object ${id} with initial angle ${initialAngle.toFixed(3)}`);
   });
 
   socket.on('drag', ({ x, y }) => {
@@ -206,43 +368,6 @@ io.on('connection', socket => {
     console.log(`Client ${socket.id} stopped dragging`);
   });
 
-  socket.on('removeAnchor', ({ index, x, y }) => {
-    if (!lobbyWorld) return;
-    
-    // Find the anchor at the specified index
-    if (index >= 0 && index < lobbyWorld.anchoredBodies.length) {
-      const anchorData = lobbyWorld.anchoredBodies[index];
-      console.log('Removing anchor:', { index, x, y, objectId: anchorData.cfg.id });
-      
-      // Remove the constraint from the world
-      World.remove(lobbyWorld.world, anchorData.C);
-      
-      // Remove the anchor from the anchoredBodies array
-      lobbyWorld.anchoredBodies.splice(index, 1);
-      
-      // Update the object's hasAnchors property by removing the corresponding fixedPoint
-      const objectEntry = lobbyWorld.bodies.find(o => o.renderHint.id === anchorData.cfg.id);
-      if (objectEntry && Array.isArray(objectEntry.renderHint.fixedPoints)) {
-        // Find the fixed point that corresponds to this specific anchor
-        // We can match by comparing the anchor's fixed point data
-        const fixedPointIndex = objectEntry.renderHint.fixedPoints.findIndex(fp => {
-          // Match by comparing the fixed point properties
-          return fp.offsetX === anchorData.fp.offsetX && 
-                 fp.offsetY === anchorData.fp.offsetY &&
-                 fp.percentX === anchorData.fp.percentX &&
-                 fp.percentY === anchorData.fp.percentY;
-        });
-        
-        if (fixedPointIndex !== -1) {
-          objectEntry.renderHint.fixedPoints.splice(fixedPointIndex, 1);
-          console.log(`Removed fixed point ${fixedPointIndex} from object ${anchorData.cfg.id}`);
-        } else {
-          console.log(`Could not find matching fixed point for anchor ${index}`);
-        }
-      }
-    }
-  });
-
   socket.on('movemouse', pos => {
     if (!lobbyWorld) return;
     socket.to(lobbyCode).emit('mouseMoved', {
@@ -283,37 +408,75 @@ setInterval(() => {
     
     const floorY = lobbyWorld.canvasSize.height + WALL_THICKNESS / 2;
     
-    for (const b of lobbyWorld.DYNAMIC_BODIES) {
-      // Respawn objects that fall below screen
-      if (b.position.y > floorY + RESPAWN_MARGIN) {
-        // Respawn at 15% from left, 2% from top of canvas
-        const respawnX = lobbyWorld.canvasSize.width * 0.15;
-        const respawnY = lobbyWorld.canvasSize.height * 0.02;
-        Body.setPosition(b, { x: respawnX, y: respawnY });
-        Body.setVelocity(b, { x: 0, y: 0 });
-        Body.setAngularVelocity(b, 0);
-        Body.setAngle(b, 0);
+    // Check for objects that need respawning
+    for (const [id, entry] of lobbyWorld.grabbableBodies) {
+      const body = entry.body;
+      const respawnLocation = entry.respawnLocation;
+      
+      // Respawn if object falls below screen
+      if (body.position.y > floorY + RESPAWN_MARGIN) {
+        console.log(`Respawning ${id} to original location`);
+        Body.setPosition(body, { x: respawnLocation.x, y: respawnLocation.y });
+        Body.setVelocity(body, { x: 0, y: 0 });
+        Body.setAngularVelocity(body, 0);
+        Body.setAngle(body, 0);
       }
     }
     
+    // Respawn ball if it falls off screen
+    if (lobbyWorld.gameBall && lobbyWorld.gameBall.position.y > floorY + RESPAWN_MARGIN) {
+      const ballStart = lobbyWorld.levelData.ballStartLocation;
+      console.log('Respawning ball to start location');
+      Body.setPosition(lobbyWorld.gameBall, { x: ballStart.x, y: ballStart.y });
+      Body.setVelocity(lobbyWorld.gameBall, { x: 0, y: 0 });
+      Body.setAngularVelocity(lobbyWorld.gameBall, 0);
+    }
+    
+    // Send state to clients
     io.to(lobbyCode).emit('state', {
-      bodies: lobbyWorld.bodies.map(({ body, renderHint }) => {
-        // Debug rotation occasionally
-        if (Math.random() < 0.01) { // 1% chance to log
-          console.log(`[server] Sending ${body.label}: angle=${body.angle.toFixed(3)}, pos=(${body.position.x.toFixed(1)}, ${body.position.y.toFixed(1)})`);
-        }
-        return {
-          id: body.label,
-          x: body.position.x,
-          y: body.position.y,
-          angle: body.angle,
-          image: renderHint.image,
-          width: renderHint.width,
-          height: renderHint.height,
-          hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
-        };
-      }),
-      anchors: lobbyWorld.anchoredBodies.map(({ C }) => C.pointA)
+      bodies: lobbyWorld.bodies.map(({ body, renderHint }) => ({
+        id: body.label,
+        x: body.position.x,
+        y: body.position.y,
+        angle: body.angle,
+        image: renderHint.image,
+        width: renderHint.width,
+        height: renderHint.height,
+        type: renderHint.type,
+        isSensor: body.isSensor
+      })),
+      grabbableObjects: Array.from(lobbyWorld.grabbableBodies.entries()).map(([id, entry]) => ({
+        id: id,
+        x: entry.body.position.x,
+        y: entry.body.position.y,
+        angle: entry.body.angle,
+        image: entry.originalData.image,
+        width: entry.originalData.width,
+        height: entry.originalData.height,
+        type: 'grabbable'
+      })),
+      gameBall: lobbyWorld.gameBall ? {
+        id: 'gameBall',
+        x: lobbyWorld.gameBall.position.x,
+        y: lobbyWorld.gameBall.position.y,
+        angle: lobbyWorld.gameBall.angle,
+        image: '/images/ball.png',
+        width: 30,
+        height: 30,
+        type: 'ball'
+      } : null,
+      goal: lobbyWorld.goal ? {
+        id: 'goal',
+        x: lobbyWorld.goal.position.x,
+        y: lobbyWorld.goal.position.y,
+        image: '/images/goal.png',
+        width: 50,
+        height: 50,
+        type: 'goal'
+      } : null,
+      currentLevel: lobbyWorld.currentLevel,
+      gameState: lobbyWorld.gameState,
+      levelData: lobbyWorld.levelData
     });
   }
   
@@ -324,37 +487,75 @@ setInterval(() => {
     
     const floorY = globalLobby.canvasSize.height + WALL_THICKNESS / 2;
     
-    for (const b of globalLobby.DYNAMIC_BODIES) {
-      // Respawn objects that fall below screen
-      if (b.position.y > floorY + RESPAWN_MARGIN) {
-        // Respawn at 15% from left, 2% from top of canvas
-        const respawnX = globalLobby.canvasSize.width * 0.15;
-        const respawnY = globalLobby.canvasSize.height * 0.02;
-        Body.setPosition(b, { x: respawnX, y: respawnY });
-        Body.setVelocity(b, { x: 0, y: 0 });
-        Body.setAngularVelocity(b, 0);
-        Body.setAngle(b, 0);
+    // Check for objects that need respawning
+    for (const [id, entry] of globalLobby.grabbableBodies) {
+      const body = entry.body;
+      const respawnLocation = entry.respawnLocation;
+      
+      // Respawn if object falls below screen
+      if (body.position.y > floorY + RESPAWN_MARGIN) {
+        console.log(`Respawning ${id} to original location`);
+        Body.setPosition(body, { x: respawnLocation.x, y: respawnLocation.y });
+        Body.setVelocity(body, { x: 0, y: 0 });
+        Body.setAngularVelocity(body, 0);
+        Body.setAngle(body, 0);
       }
     }
     
+    // Respawn ball if it falls off screen
+    if (globalLobby.gameBall && globalLobby.gameBall.position.y > floorY + RESPAWN_MARGIN) {
+      const ballStart = globalLobby.levelData.ballStartLocation;
+      console.log('Respawning ball to start location');
+      Body.setPosition(globalLobby.gameBall, { x: ballStart.x, y: ballStart.y });
+      Body.setVelocity(globalLobby.gameBall, { x: 0, y: 0 });
+      Body.setAngularVelocity(globalLobby.gameBall, 0);
+    }
+    
+    // Send state to clients
     io.to('GLOBAL').emit('state', {
-      bodies: globalLobby.bodies.map(({ body, renderHint }) => {
-        // Debug rotation occasionally
-        if (Math.random() < 0.01) { // 1% chance to log
-          console.log(`[server] Sending ${body.label}: angle=${body.angle.toFixed(3)}, pos=(${body.position.x.toFixed(1)}, ${body.position.y.toFixed(1)})`);
-        }
-        return {
-          id: body.label,
-          x: body.position.x,
-          y: body.position.y,
-          angle: body.angle,
-          image: renderHint.image,
-          width: renderHint.width,
-          height: renderHint.height,
-          hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
-        };
-      }),
-      anchors: globalLobby.anchoredBodies.map(({ C }) => C.pointA)
+      bodies: globalLobby.bodies.map(({ body, renderHint }) => ({
+        id: body.label,
+        x: body.position.x,
+        y: body.position.y,
+        angle: body.angle,
+        image: renderHint.image,
+        width: renderHint.width,
+        height: renderHint.height,
+        type: renderHint.type,
+        isSensor: body.isSensor
+      })),
+      grabbableObjects: Array.from(globalLobby.grabbableBodies.entries()).map(([id, entry]) => ({
+        id: id,
+        x: entry.body.position.x,
+        y: entry.body.position.y,
+        angle: entry.body.angle,
+        image: entry.originalData.image,
+        width: entry.originalData.width,
+        height: entry.originalData.height,
+        type: 'grabbable'
+      })),
+      gameBall: globalLobby.gameBall ? {
+        id: 'gameBall',
+        x: globalLobby.gameBall.position.x,
+        y: globalLobby.gameBall.position.y,
+        angle: globalLobby.gameBall.angle,
+        image: '/images/ball.png',
+        width: 30,
+        height: 30,
+        type: 'ball'
+      } : null,
+      goal: globalLobby.goal ? {
+        id: 'goal',
+        x: globalLobby.goal.position.x,
+        y: globalLobby.goal.position.y,
+        image: '/images/goal.png',
+        width: 50,
+        height: 50,
+        type: 'goal'
+      } : null,
+      currentLevel: globalLobby.currentLevel,
+      gameState: globalLobby.gameState,
+      levelData: globalLobby.levelData
     });
   }
 }, 1000 / 60);

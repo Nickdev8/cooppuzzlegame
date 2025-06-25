@@ -2,19 +2,6 @@
 	import { onMount, onDestroy } from 'svelte';
 	import io, { Socket } from 'socket.io-client';
 
-	let anchors: { x: number; y: number }[] = [];
-
-	interface BodyState {
-		id: string;
-		x: number;
-		y: number;
-		angle: number;
-		width: number;
-		height: number;
-		image?: string;
-		hasAnchors?: boolean;
-	}
-
 	let canvas: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D;
 	let socket: Socket;
@@ -38,13 +25,19 @@
 
 	let canvasWidth = 2048;
 	let canvasHeight = 1024; // 2:1 ratio
-	let objects: Record<string, BodyState> = {};
+	let objects: Record<string, any> = {};
+	let grabbableObjects: Record<string, any> = {};
+	let gameBall: any = null;
+	let goal: any = null;
+	let currentLevel = 0;
+	let gameState = 'playing';
+	let levelData: any = null;
 
 	let dragging = false;
 	let dragId: string | null = null;
 	let dragOffset = { x: 0, y: 0 }; // Offset from mouse to object center
 	const RADIUS = 20;
-	let spriteCache: Record<string, HTMLImageElement> = {};
+	let spriteCache: Record<string, HTMLImageElement | null> = {};
 
 	// Add mouse movement tracking for throwing
 	let lastMousePos = { x: 0, y: 0 };
@@ -53,6 +46,12 @@
 
 	let lobbyCode: string | null = null;
 	let joinedPhysics = false;
+
+	// Level transition animation
+	let levelTransitioning = false;
+	let transitionProgress = 0;
+	let canvasLeft = 0;
+	let canvasRight = 0;
 
 	const log = (...args: any[]) => console.log(...args);
 	// const log = (...args: any[]) => {};
@@ -136,21 +135,11 @@
 		const { x: mx, y: my } = transformMouseToCanvas(e.clientX, e.clientY);
 		log('handleCanvasMousedown', { mx, my });
 		
-		// Check if an anchor was clicked
-		for (let i = 0; i < anchors.length; i++) {
-			const anchor = anchors[i];
-			const dx = mx - anchor.x;
-			const dy = my - anchor.y;
-			if (dx * dx + dy * dy <= 100) { // 10px radius for screw clicking (matches the outer circle)
-				log('   • Screw clicked at index:', i, { x: anchor.x, y: anchor.y });
-				safeEmit('removeAnchor', { index: i, x: anchor.x, y: anchor.y });
-				return; // Don't check for object dragging if screw was clicked
-			}
-		}
-		
 		let hit = false;
-		for (const id in objects) {
-			const o = objects[id];
+		
+		// Check grabbable objects first
+		for (const id in grabbableObjects) {
+			const o = grabbableObjects[id];
 			const dx = mx - o.x;
 			const dy = my - o.y;
 			
@@ -167,11 +156,6 @@
 			}
 			
 			if (isHit) {
-				// Check if object has anchors - if so, don't allow dragging
-				if (o.hasAnchors) {
-					log('   • Object has anchors, cannot be dragged:', id);
-					continue;
-				}
 				hit = true;
 				dragging = true;
 				dragId = id;
@@ -184,11 +168,12 @@
 				lastMouseTime = performance.now();
 				mouseVelocity = { x: 0, y: 0 };
 				
-				log('   • startDrag on', id, { mx, my, dragOffset, width: o.width, height: o.height });
+				log('   • startDrag on grabbable object', id, { mx, my, dragOffset, width: o.width, height: o.height });
 				safeEmit('startDrag', { id, x: mx, y: my });
 				break;
 			}
 		}
+		
 		if (!hit && dragging) {
 			log('   • endDrag (missed hit)', { dragId });
 			safeEmit('endDrag');
@@ -208,19 +193,21 @@
 		const t0 = performance.now();
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+		// Apply level transition animation
+		if (levelTransitioning) {
+			ctx.save();
+			ctx.translate(canvasLeft, 0);
+		}
+
 		// Draw hand-drawn style background
 		drawHandDrawnBackground();
 
+		// Draw static objects
 		for (const id in objects) {
 			const o = objects[id];
 			ctx.save();
 			ctx.translate(o.x, o.y);
 			ctx.rotate(o.angle);
-			
-			// Debug rotation occasionally
-			if (Math.random() < 0.01) { // 1% chance to log
-				log(`[draw] Rendering ${id} at (${o.x.toFixed(1)}, ${o.y.toFixed(1)}) with angle ${o.angle.toFixed(3)}`);
-			}
 			
 			if (o.image) {
 				let img = spriteCache[id];
@@ -232,31 +219,177 @@
 						log('[draw] Image loaded for', id);
 						draw();
 					};
-					img.onerror = (e) => console.error('[draw] Image load error for', id, e);
+					img.onerror = (e) => {
+						console.error('[draw] Image load error for', id, e);
+						// Mark as failed to load
+						spriteCache[id] = null;
+						draw();
+					};
 				}
-				ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
 				
-				// Debug: Draw hit detection area (uncomment to see hit areas)
-				// if (o.width && o.height) {
-				// 	ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-				// 	ctx.lineWidth = 2;
-				// 	ctx.strokeRect(-o.width / 2, -o.height / 2, o.width, o.height);
-				// }
+				if (img && img.complete && img.naturalWidth > 0) {
+					ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
+				} else {
+					// Draw purple rectangle fallback
+					ctx.fillStyle = '#9c27b0';
+					ctx.fillRect(-o.width / 2, -o.height / 2, o.width, o.height);
+					ctx.strokeStyle = '#7b1fa2';
+					ctx.lineWidth = 2;
+					ctx.strokeRect(-o.width / 2, -o.height / 2, o.width, o.height);
+				}
 			} else {
-				// Draw hand-drawn style circle with rotation
-				drawHandDrawnCircle(0, 0, RADIUS, 'blue'); // Draw at origin since we already translated
-				
-				// Debug: Draw hit detection area for circles (uncomment to see hit areas)
-				// ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-				// ctx.lineWidth = 2;
-				// ctx.beginPath();
-				// ctx.arc(0, 0, RADIUS, 0, Math.PI * 2);
-				// ctx.stroke();
+				// Draw placeholder for objects without images
+				ctx.fillStyle = o.type === 'flipper' ? '#ff6b6b' : '#4ecdc4';
+				ctx.fillRect(-o.width / 2, -o.height / 2, o.width, o.height);
 			}
 			
 			ctx.restore();
 		}
 
+		// Draw grabbable objects
+		for (const id in grabbableObjects) {
+			const o = grabbableObjects[id];
+			ctx.save();
+			ctx.translate(o.x, o.y);
+			ctx.rotate(o.angle);
+			
+			if (o.image) {
+				let img = spriteCache[id];
+				if (!img) {
+					img = new Image();
+					img.src = o.image;
+					spriteCache[id] = img;
+					img.onload = () => {
+						log('[draw] Image loaded for grabbable', id);
+						draw();
+					};
+					img.onerror = (e) => {
+						console.error('[draw] Image load error for grabbable', id, e);
+						// Mark as failed to load
+						spriteCache[id] = null;
+						draw();
+					};
+				}
+				
+				if (img && img.complete && img.naturalWidth > 0) {
+					ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
+				} else {
+					// Draw purple rectangle fallback
+					ctx.fillStyle = '#9c27b0';
+					ctx.fillRect(-o.width / 2, -o.height / 2, o.width, o.height);
+					ctx.strokeStyle = '#7b1fa2';
+					ctx.lineWidth = 2;
+					ctx.strokeRect(-o.width / 2, -o.height / 2, o.width, o.height);
+				}
+			} else {
+				// Draw placeholder for grabbable objects without images
+				ctx.fillStyle = '#96ceb4';
+				ctx.fillRect(-o.width / 2, -o.height / 2, o.width, o.height);
+			}
+			
+			ctx.restore();
+		}
+
+		// Draw game ball
+		if (gameBall) {
+			ctx.save();
+			ctx.translate(gameBall.x, gameBall.y);
+			ctx.rotate(gameBall.angle);
+			
+			if (gameBall.image) {
+				let img = spriteCache['gameBall'];
+				if (!img) {
+					img = new Image();
+					img.src = gameBall.image;
+					spriteCache['gameBall'] = img;
+					img.onload = () => {
+						log('[draw] Ball image loaded');
+						draw();
+					};
+					img.onerror = (e) => {
+						console.error('[draw] Ball image load error:', e);
+						// Mark as failed to load
+						spriteCache['gameBall'] = null;
+						draw();
+					};
+				}
+				
+				if (img && img.complete && img.naturalWidth > 0) {
+					ctx.drawImage(img, -gameBall.width / 2, -gameBall.height / 2, gameBall.width, gameBall.height);
+				} else {
+					// Draw purple circle fallback
+					ctx.fillStyle = '#9c27b0';
+					ctx.beginPath();
+					ctx.arc(0, 0, gameBall.width / 2, 0, Math.PI * 2);
+					ctx.fill();
+					ctx.strokeStyle = '#7b1fa2';
+					ctx.lineWidth = 2;
+					ctx.stroke();
+				}
+			} else {
+				// Draw ball placeholder
+				ctx.fillStyle = '#ffd93d';
+				ctx.beginPath();
+				ctx.arc(0, 0, gameBall.width / 2, 0, Math.PI * 2);
+				ctx.fill();
+				ctx.strokeStyle = '#f6c90e';
+				ctx.lineWidth = 2;
+				ctx.stroke();
+			}
+			
+			ctx.restore();
+		}
+
+		// Draw goal
+		if (goal) {
+			ctx.save();
+			ctx.translate(goal.x, goal.y);
+			
+			if (goal.image) {
+				let img = spriteCache['goal'];
+				if (!img) {
+					img = new Image();
+					img.src = goal.image;
+					spriteCache['goal'] = img;
+					img.onload = () => {
+						log('[draw] Goal image loaded');
+						draw();
+					};
+					img.onerror = (e) => {
+						console.error('[draw] Goal image load error:', e);
+						// Mark as failed to load
+						spriteCache['goal'] = null;
+						draw();
+					};
+				}
+				
+				if (img && img.complete && img.naturalWidth > 0) {
+					ctx.drawImage(img, -goal.width / 2, -goal.height / 2, goal.width, goal.height);
+				} else {
+					// Draw purple circle fallback
+					ctx.fillStyle = 'rgba(156, 39, 176, 0.3)';
+					ctx.beginPath();
+					ctx.arc(0, 0, goal.width / 2, 0, Math.PI * 2);
+					ctx.fill();
+					ctx.strokeStyle = '#9c27b0';
+					ctx.lineWidth = 3;
+					ctx.stroke();
+				}
+			} else {
+				// Draw goal placeholder
+				ctx.fillStyle = 'rgba(76, 175, 80, 0.3)';
+				ctx.beginPath();
+				ctx.arc(0, 0, goal.width / 2, 0, Math.PI * 2);
+				ctx.fill();
+				ctx.strokeStyle = '#4caf50';
+				ctx.lineWidth = 3;
+				ctx.stroke();
+			}
+			
+			ctx.restore();
+		}
+
+		// Draw cursors
 		for (const clientId in mousePositions) {
 			const pos = mousePositions[clientId]!;
 			const hue = cursorHues[clientId]!;
@@ -275,50 +408,13 @@
 
 		ctx.filter = 'none';
 
-		const t1 = performance.now();
-		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
-
-		// Draw hand-drawn style anchors (screws)
-		ctx.fillStyle = 'red';
-		for (const p of anchors) {
-			// Draw a screw-like anchor
-			ctx.save();
-			
-			// Screw head (outer circle)
-			ctx.strokeStyle = '#8B4513'; // Brown border
-			ctx.fillStyle = '#D2691E'; // Metallic brown
-			ctx.lineWidth = 2;
-			ctx.beginPath();
-			ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.stroke();
-			
-			// Screw head inner circle
-			ctx.fillStyle = '#CD853F'; // Lighter brown
-			ctx.beginPath();
-			ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
-			ctx.fill();
-			
-			// Cross pattern (screwdriver slot)
-			ctx.strokeStyle = '#654321'; // Dark brown
-			ctx.lineWidth = 2;
-			ctx.beginPath();
-			// Vertical line
-			ctx.moveTo(p.x, p.y - 4);
-			ctx.lineTo(p.x, p.y + 4);
-			// Horizontal line
-			ctx.moveTo(p.x - 4, p.y);
-			ctx.lineTo(p.x + 4, p.y);
-			ctx.stroke();
-			
-			// Center dot
-			ctx.fillStyle = '#654321';
-			ctx.beginPath();
-			ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
-			ctx.fill();
-			
+		// Restore canvas position after level transition
+		if (levelTransitioning) {
 			ctx.restore();
 		}
+
+		const t1 = performance.now();
+		log(`[draw] rendered ${Object.keys(objects).length + Object.keys(grabbableObjects).length + (gameBall ? 1 : 0) + (goal ? 1 : 0)} objects in ${(t1 - t0).toFixed(1)}ms`);
 
 		log('[draw] done');
 	}
@@ -352,29 +448,25 @@
 		ctx.setLineDash([]);
 	}
 
-	function drawHandDrawnCircle(x: number, y: number, radius: number, color: string) {
-		ctx.strokeStyle = color;
-		ctx.fillStyle = color;
-		ctx.lineWidth = 2;
+	function animateLevelTransition() {
+		if (!levelTransitioning) return;
 		
-		// Draw a hand-drawn circle with slight imperfections
-		ctx.beginPath();
-		const segments = 16;
-		for (let i = 0; i <= segments; i++) {
-			const angle = (i / segments) * Math.PI * 2;
-			const r = radius + (Math.random() - 0.5) * 2; // Slight radius variation
-			const px = x + Math.cos(angle) * r;
-			const py = y + Math.sin(angle) * r;
-			
-			if (i === 0) {
-				ctx.moveTo(px, py);
-			} else {
-				ctx.lineTo(px, py);
-			}
+		transitionProgress += 0.02;
+		if (transitionProgress >= 1) {
+			levelTransitioning = false;
+			transitionProgress = 0;
+			canvasLeft = 0;
+			canvasRight = 0;
+			return;
 		}
-		ctx.closePath();
-		ctx.fill();
-		ctx.stroke();
+		
+		// Slide canvas halves apart
+		const slideDistance = canvas.width * 0.3;
+		canvasLeft = -slideDistance * transitionProgress;
+		canvasRight = slideDistance * transitionProgress;
+		
+		draw();
+		requestAnimationFrame(animateLevelTransition);
 	}
 
 	onMount(() => {
@@ -433,20 +525,50 @@
 			log('[joinedPhysics] Client-side ownership enabled:', data.clientSideOwnershipEnabled);
 		});
 
+		socket.on('levelInfo', (data: { currentLevel: number; levelData: any; gameState: string }) => {
+			currentLevel = data.currentLevel;
+			levelData = data.levelData;
+			gameState = data.gameState;
+			log('[levelInfo] Received level info:', data);
+		});
+
 		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
 		socket.on('disconnect', (reason) => console.warn('[socket] disconnect:', reason));
 
 		// update
-		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			// Always use server state for all objects - no client-side position preservation
-			payload.bodies.forEach((o) => {
+		socket.on('state', (payload: any) => {
+			// Update all objects from server
+			objects = {};
+			payload.bodies.forEach((o: any) => {
 				objects[o.id] = o;
-				log(`[state] Updated ${o.id}: angle=${o.angle.toFixed(3)}, pos=(${o.x.toFixed(1)}, ${o.y.toFixed(1)})`);
 			});
 
-			anchors = payload.anchors;
-			log('Socket state received', payload);
+			grabbableObjects = {};
+			payload.grabbableObjects.forEach((o: any) => {
+				grabbableObjects[o.id] = o;
+			});
 
+			gameBall = payload.gameBall;
+			goal = payload.goal;
+			
+			// Check for level transition
+			if (payload.gameState === 'levelComplete' && gameState !== 'levelComplete') {
+				gameState = 'levelComplete';
+				log('Level complete! Starting transition animation...');
+				levelTransitioning = true;
+				animateLevelTransition();
+			} else if (payload.gameState === 'transitioning' && gameState !== 'transitioning') {
+				gameState = 'transitioning';
+				log('Level transitioning...');
+			} else if (payload.gameState === 'playing' && gameState !== 'playing') {
+				gameState = 'playing';
+				log('New level loaded!');
+			}
+
+			currentLevel = payload.currentLevel;
+			levelData = payload.levelData;
+
+			log('Socket state received', payload);
 			draw();
 		});
 
@@ -560,6 +682,21 @@
 				<span class="info-label">👥 Players:</span>
 				<span class="info-value">{Object.keys(mousePositions).length + 1}</span>
 			</div>
+			{#if levelData}
+				<div class="info-item">
+					<span class="info-label">📋 Level:</span>
+					<span class="info-value">{currentLevel + 1} - {levelData.name}</span>
+				</div>
+				<div class="info-item">
+					<span class="info-label">🎯 Goal:</span>
+					<span class="info-value">{levelData.description}</span>
+				</div>
+			{/if}
+			{#if gameState === 'levelComplete'}
+				<div class="info-item level-complete">
+					<span class="info-label">🎉 Level Complete!</span>
+				</div>
+			{/if}
 		</div>
 	</div>
 </div>
@@ -656,6 +793,25 @@
 		padding: 2px 8px;
 		border-radius: 8px;
 		border: 1px solid #d4c4a8;
+	}
+
+	.level-complete {
+		background: linear-gradient(45deg, #4caf50, #8bc34a);
+		color: white;
+		border-radius: 10px;
+		padding: 8px 12px;
+		margin-top: 10px;
+		animation: pulse 1.5s ease-in-out infinite;
+	}
+
+	.level-complete .info-label {
+		color: white;
+		font-weight: 700;
+	}
+
+	@keyframes pulse {
+		0%, 100% { transform: scale(1); }
+		50% { transform: scale(1.05); }
 	}
 
 	/* Hand-drawn style decorations */
