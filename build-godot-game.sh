@@ -58,9 +58,9 @@ html_export_icon=""
 EOF
 fi
 
-# Export the project
+# Export the project using Godot 4 syntax
 echo "🔨 Building HTML5 export..."
-godot --headless --export "HTML5" "../../static/godot-game/index.html"
+godot --headless --export-release "HTML5" "../../static/godot-game/index.html"
 
 if [ $? -eq 0 ]; then
     echo "✅ Successfully exported Godot game to HTML5!"

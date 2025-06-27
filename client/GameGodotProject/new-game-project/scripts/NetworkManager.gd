@@ -18,8 +18,9 @@ func _ready():
 	# Listen for messages from parent window (only in web builds)
 	if OS.has_feature("web"):
 		# JavaScript.eval is only available in web exports
-		if JavaScript:
-			JavaScript.eval("""
+		if Engine.has_singleton("JavaScript"):
+			var js = Engine.get_singleton("JavaScript")
+			js.eval("""
 				window.addEventListener('message', function(event) {
 					if (event.data && event.data.type === 'LOBBY_INFO') {
 						window.godot_lobby_info = event.data;
@@ -44,9 +45,10 @@ func _ready():
 			connection_panel.visible = true
 
 func _check_for_lobby_info():
-	if OS.has_feature("web") and JavaScript:
+	if OS.has_feature("web") and Engine.has_singleton("JavaScript"):
+		var js = Engine.get_singleton("JavaScript")
 		# Check if lobby info is available from parent window
-		var lobby_info = JavaScript.eval("window.godot_lobby_info")
+		var lobby_info = js.eval("window.godot_lobby_info")
 		if lobby_info and lobby_info.has("lobbyCode"):
 			_lobby_info_received(lobby_info)
 		else:
