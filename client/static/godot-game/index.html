@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cooperative Puzzle Game - Godot</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .game-container {
+            text-align: center;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #333;
+            border-top: 3px solid #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .message {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 14px;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="loading-spinner"></div>
+        <div class="message">Loading Godot Game...</div>
+        <div class="subtitle">Please wait while the game initializes</div>
+    </div>
+    
+    <script>
+        // This is a placeholder for the Godot game
+        // In a real setup, this would be replaced by the actual Godot HTML5 export
+        
+        console.log("Godot game placeholder loaded");
+        
+        // Simulate game loading
+        setTimeout(() => {
+            document.body.innerHTML = `
+                <div class="game-container">
+                    <div class="message">Godot Game Ready!</div>
+                    <div class="subtitle">This is a placeholder for the actual Godot game</div>
+                    <div class="subtitle">To use the real game, export the Godot project to HTML5 and replace this file</div>
+                </div>
+            `;
+        }, 3000);
+    </script>
+</body>
+</html> 

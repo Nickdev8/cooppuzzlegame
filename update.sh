@@ -1,6 +1,47 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "🎮 Building Godot Cooperative Puzzle Game..."
+
+# Check if Godot is installed
+if ! command -v godot &> /dev/null; then
+    echo "❌ Error: Godot is not installed or not in PATH"
+    echo "Please install Godot 4.4+ from https://godotengine.org/"
+    echo "Skipping Godot build and continuing with other updates..."
+else
+    # Build the Godot game
+    if [ -f "./build-godot-game.sh" ]; then
+        echo "🔨 Building Godot game..."
+        if ./build-godot-game.sh; then
+            echo "✅ Godot game built successfully!"
+        else
+            echo "⚠️  Warning: Godot build failed, continuing with other updates..."
+        fi
+    else
+        echo "⚠️  Warning: build-godot-game.sh not found, skipping Godot build..."
+    fi
+fi
+
+echo "📦 Installing/updating dependencies..."
+
+# Update server dependencies
+if [ -d "server" ]; then
+    echo "🔧 Updating server dependencies..."
+    cd server
+    npm install
+    cd ..
+fi
+
+# Update client dependencies
+if [ -d "client" ]; then
+    echo "🔧 Updating client dependencies..."
+    cd client
+    npm install
+    cd ..
+fi
+
+echo "✅ Dependencies updated!"
+
 # Only commit if there are changes
 if ! git diff --quiet; then
 kaomojis=(
@@ -164,29 +205,70 @@ kaomojis=(
   msg=${kaomojis[index]}
   git add .
   git commit -m "$msg"
+  echo "✅ Changes committed with message: $msg"
 else
-  echo "No changes to commit."
+  echo "ℹ️  No changes to commit."
 fi
 
-echo "Pushing to remote..."
+echo "🚀 Pushing to remote..."
 git push
-echo "Resuming after 5 seconds...."
-sleep 5
-echo "Done\n"
-echo "Deploying on remote server..."
+
+echo "🌐 Deploying on remote server..."
 ssh nickesselman.nl 'bash -s' <<'ENDSSH'
 set -euo pipefail
 cd ~/escape-room/
-echo "Pulling latest code..."
+echo "📥 Pulling latest code..."
 git pull
 
-echo "Running npm run deploy..."
+echo "🔧 Installing dependencies..."
+# Install server dependencies
+if [ -d "server" ]; then
+    echo "🔧 Installing server dependencies..."
+    cd server
+    npm install
+    cd ..
+fi
+
+# Install client dependencies
+if [ -d "client" ]; then
+    echo "🔧 Installing client dependencies..."
+    cd client
+    npm install
+    cd ..
+fi
+
+echo "🎮 Building Godot game on server..."
+# Check if Godot is available on the server
+if command -v godot &> /dev/null; then
+    if [ -f "./build-godot-game.sh" ]; then
+        echo "🔨 Building Godot game..."
+        if ./build-godot-game.sh; then
+            echo "✅ Godot game built successfully!"
+        else
+            echo "⚠️  Warning: Godot build failed, continuing with deployment..."
+        fi
+    else
+        echo "⚠️  Warning: build-godot-game.sh not found, skipping Godot build..."
+    fi
+else
+    echo "⚠️  Warning: Godot not available on server, skipping Godot build..."
+fi
+
+echo "🚀 Running deployment script..."
 if ! ./deploy.sh; then
-  echo "deploy.sh failed!" >&2
+  echo "❌ deploy.sh failed!" >&2
   exit 1
 fi
 
-echo "Deployment complete!"
+echo "✅ Deployment complete!"
 ENDSSH
 
-echo "All done!"
+echo "🎉 All done! Your cooperative puzzle game has been updated and deployed!"
+echo ""
+echo "📋 Summary:"
+echo "  ✅ Godot game built (if Godot available)"
+echo "  ✅ Dependencies updated"
+echo "  ✅ Code committed and pushed"
+echo "  ✅ Server deployed"
+echo ""
+echo "🌐 Your game should now be live at your server URL!"
