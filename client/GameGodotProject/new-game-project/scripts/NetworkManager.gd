@@ -84,64 +84,71 @@ func _on_connect_button_pressed():
 
 func connect_to_server():
 	if websocket:
+		print("[NetworkManager] Closing existing websocket connection.")
 		websocket.close()
 	
+	print("[NetworkManager] Creating new WebSocketPeer.")
 	websocket = WebSocketPeer.new()
 	var error = websocket.connect_to_url(server_url)
+	print("[NetworkManager] Attempting to connect to server URL: ", server_url, " (error code: ", error, ")")
 	if error != OK:
-		print("Failed to connect to server: ", error)
+		print("[NetworkManager] Failed to connect to server: ", error)
 		return
 	
-	print("Connecting to server: ", server_url)
+	print("[NetworkManager] Connecting to server: ", server_url)
 
 func _process(_delta):
 	if websocket:
 		websocket.poll()
-		
 		var state = websocket.get_ready_state()
 		if state == WebSocketPeer.STATE_OPEN:
 			if not is_connected:
 				is_connected = true
-				print("Connected to server!")
+				print("[NetworkManager] Connected to server!")
 				emit_signal("connected_to_server")
 				_join_lobby()
-			
 			while websocket.get_available_packet_count():
 				var packet = websocket.get_packet()
 				var data = JSON.parse_string(packet.get_string_from_utf8())
 				if data:
+					print("[NetworkManager] Received packet: ", data)
 					_handle_server_message(data)
-					
 		elif state == WebSocketPeer.STATE_CLOSED:
 			if is_connected:
 				is_connected = false
-				print("Disconnected from server")
+				print("[NetworkManager] Disconnected from server")
 				emit_signal("disconnected_from_server")
 
 func _join_lobby():
 	var join_data = {
 		"lobby": lobby_code
 	}
+	print("[NetworkManager] Joining lobby with data: ", join_data)
 	_send_message("joinPhysics", join_data)
 
 func _handle_server_message(data):
+	print("[NetworkManager] Handling server message: ", data)
 	if data.has("type"):
 		match data.type:
 			"joinedPhysics":
-				print("Joined physics lobby")
+				print("[NetworkManager] Joined physics lobby")
 			"levelInfo":
 				emit_signal("level_info_received", data)
 			"levelChanged":
 				emit_signal("level_changed", data)
 			"playerUpdate":
+				print("[NetworkManager] Player update received: ", data)
 				emit_signal("player_update_received", data)
 			"objectInteraction":
+				print("[NetworkManager] Object interaction received: ", data)
 				emit_signal("object_interaction_received", data)
 			"playerDisconnected":
+				print("[NetworkManager] Player disconnected: ", data.id)
 				emit_signal("player_disconnected", data.id)
 	else:
 		# Handle direct message types
 		if data.has("currentLevel"):
+			print("[NetworkManager] Level info (direct): ", data)
 			emit_signal("level_info_received", data)
 
 func _send_message(event: String, data: Dictionary):
@@ -151,21 +158,30 @@ func _send_message(event: String, data: Dictionary):
 			"data": data
 		}
 		var json_string = JSON.stringify(message)
+		print("[NetworkManager] Sending message: ", message)
 		websocket.send_text(json_string)
 
 func send_player_update(data: Dictionary):
+	# Add local cursor position to data
+	if Input:
+		data["cursor_position"] = {"x": Input.get_mouse_position().x, "y": Input.get_mouse_position().y}
+	print("[NetworkManager] Sending player update: ", data)
 	_send_message("playerUpdate", data)
 
 func send_object_interaction(data: Dictionary):
+	print("[NetworkManager] Sending object interaction: ", data)
 	_send_message("objectInteraction", data)
 
 func send_level_complete():
+	print("[NetworkManager] Sending level complete")
 	_send_message("levelComplete", {})
 
 func _on_skip_button_pressed():
+	print("[NetworkManager] Skip level pressed")
 	_send_message("skipLevel", {})
 
 func disconnect_from_server():
 	if websocket:
+		print("[NetworkManager] Disconnecting from server")
 		websocket.close()
 		is_connected = false 

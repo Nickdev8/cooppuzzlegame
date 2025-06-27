@@ -17,8 +17,14 @@ var network_manager: Node
 # Preload textures
 var ball_texture: Texture2D
 var box_texture: Texture2D
+var cursor_texture: Texture2D = preload("res://assets/cursor.svg")
+var player_cursors: Dictionary = {}
+
+# Dictionary to hold remote player cursor nodes
+var remote_cursors: Dictionary = {}
 
 func _ready():
+	print("[GameManager] _ready() called")
 	network_manager = get_node("../NetworkManager")
 	
 	# Load textures
@@ -55,6 +61,7 @@ func _setup_ui_for_platform():
 			game_ui.visible = false
 
 func _on_connected_to_server():
+	print("[GameManager] Connected to server")
 	# Show game UI
 	var connection_panel = get_node("../UI/ConnectionPanel")
 	var game_ui = get_node("../GameUI")
@@ -70,6 +77,7 @@ func _on_connected_to_server():
 		status_label.text = "Connected"
 
 func _on_disconnected_from_server():
+	print("[GameManager] Disconnected from server")
 	# Show connection UI
 	var connection_panel = get_node("../UI/ConnectionPanel")
 	var game_ui = get_node("../GameUI")
@@ -88,6 +96,7 @@ func _on_disconnected_from_server():
 	_clear_level()
 
 func _on_level_info_received(level_info: Dictionary):
+	print("[GameManager] Level info received: ", level_info)
 	current_level = level_info.get("currentLevel", 0)
 	level_data = level_info.get("levelData", {})
 	game_state = level_info.get("gameState", "playing")
@@ -103,15 +112,20 @@ func _on_level_info_received(level_info: Dictionary):
 	emit_signal("game_state_changed", game_state)
 
 func _on_level_changed(level_data: Dictionary):
+	print("[GameManager] Level changed: ", level_data)
 	_on_level_info_received(level_data)
 
 func _on_player_update_received(player_data: Dictionary):
 	var player_id = player_data.get("id", "")
-	if player_id != "":
+	print("[GameManager] Received player update for id=", player_id, ": ", player_data)
+	if player_id != "" and player_id != network_manager.get_tree().get_network_unique_id():
 		players[player_id] = player_data
 		_update_player_visual(player_id, player_data)
+	else:
+		print("[GameManager] Ignoring local player update or missing id.")
 
 func _on_object_interaction_received(interaction_data: Dictionary):
+	print("[GameManager] Object interaction received: ", interaction_data)
 	var player_id = interaction_data.get("id", "")
 	var object_id = interaction_data.get("objectId", "")
 	var interaction_type = interaction_data.get("type", "")
@@ -125,11 +139,13 @@ func _on_object_interaction_received(interaction_data: Dictionary):
 			_handle_object_activate(player_id, object_id, interaction_data)
 
 func _on_player_disconnected(player_id: String):
+	print("[GameManager] Player disconnected: ", player_id)
 	if players.has(player_id):
 		players.erase(player_id)
 		_remove_player_visual(player_id)
 
 func _load_level(level_data: Dictionary):
+	print("[GameManager] Loading level: ", level_data)
 	_clear_level()
 	
 	if level_data.is_empty():
@@ -154,6 +170,7 @@ func _load_level(level_data: Dictionary):
 		_create_grabbable_object(obj)
 
 func _clear_level():
+	print("[GameManager] Clearing level")
 	# Remove all game objects
 	for obj in game_objects.values():
 		if is_instance_valid(obj):
@@ -170,6 +187,7 @@ func _clear_level():
 		goal = null
 
 func _create_game_ball(start_position: Dictionary):
+	print("[GameManager] Creating game ball at ", start_position)
 	game_ball = RigidBody2D.new()
 	game_ball.position = Vector2(start_position.x, start_position.y)
 	
@@ -188,6 +206,7 @@ func _create_game_ball(start_position: Dictionary):
 	game_objects["gameBall"] = game_ball
 
 func _create_goal(goal_position: Dictionary):
+	print("[GameManager] Creating goal at ", goal_position)
 	goal = Area2D.new()
 	goal.position = Vector2(goal_position.x, goal_position.y)
 	
@@ -208,6 +227,7 @@ func _create_goal(goal_position: Dictionary):
 	add_child(goal)
 
 func _create_static_object(obj_data: Dictionary):
+	print("[GameManager] Creating static object: ", obj_data)
 	var static_body = StaticBody2D.new()
 	static_body.position = Vector2(obj_data.x, obj_data.y)
 	
@@ -237,6 +257,7 @@ func _create_static_object(obj_data: Dictionary):
 	game_objects[obj_data.id] = static_body
 
 func _create_grabbable_object(obj_data: Dictionary):
+	print("[GameManager] Creating grabbable object: ", obj_data)
 	var rigid_body = RigidBody2D.new()
 	rigid_body.position = Vector2(obj_data.x, obj_data.y)
 	rigid_body.mass = obj_data.get("mass", 1.0)
@@ -287,12 +308,14 @@ func _create_circle_texture(size: int, color: Color) -> Texture2D:
 	return texture
 
 func _on_goal_entered(body: Node2D):
+	print("[GameManager] Goal entered by: ", body)
 	if body == game_ball:
 		print("Goal reached! Level complete!")
 		network_manager.send_level_complete()
 		emit_signal("level_completed")
 
 func _handle_object_grab(player_id: String, object_id: String, data: Dictionary):
+	print("[GameManager] Object grabbed: ", object_id, " by ", player_id, " data: ", data)
 	if game_objects.has(object_id):
 		var obj = game_objects[object_id]
 		if obj is RigidBody2D:
@@ -300,6 +323,7 @@ func _handle_object_grab(player_id: String, object_id: String, data: Dictionary)
 			obj.set_meta("grabbed_by", player_id)
 
 func _handle_object_release(player_id: String, object_id: String, data: Dictionary):
+	print("[GameManager] Object released: ", object_id, " by ", player_id, " data: ", data)
 	if game_objects.has(object_id):
 		var obj = game_objects[object_id]
 		if obj is RigidBody2D:
@@ -312,18 +336,37 @@ func _handle_object_release(player_id: String, object_id: String, data: Dictiona
 				obj.linear_velocity = Vector2(velocity.x, velocity.y)
 
 func _handle_object_activate(player_id: String, object_id: String, data: Dictionary):
+	print("[GameManager] Object activated: ", object_id, " by ", player_id, " data: ", data)
 	# Handle object activation (switches, flippers, etc.)
 	pass
 
 func _update_player_visual(player_id: String, player_data: Dictionary):
-	# Update or create player visual representation
-	pass
+	print("[GameManager] Updating player visual for id=", player_id, ": ", player_data)
+	var pos = Vector2(player_data.get("x", 0), player_data.get("y", 0))
+	var cursor_node: Sprite2D = null
+	if player_cursors.has(player_id):
+		cursor_node = player_cursors[player_id]
+	else:
+		cursor_node = Sprite2D.new()
+		cursor_node.texture = cursor_texture
+		cursor_node.name = "Cursor_" + player_id
+		cursor_node.z_index = 1000
+		add_child(cursor_node)
+		player_cursors[player_id] = cursor_node
+	cursor_node.position = pos
+	cursor_node.visible = true
+	print("[GameManager] Cursor for player ", player_id, " set to position ", pos)
 
 func _remove_player_visual(player_id: String):
-	# Remove player visual representation
-	pass
+	print("[GameManager] Removing player visual for id=", player_id)
+	if player_cursors.has(player_id):
+		var cursor_node = player_cursors[player_id]
+		if is_instance_valid(cursor_node):
+			cursor_node.queue_free()
+		player_cursors.erase(player_id)
 
 func _input(event):
+	print("[GameManager] Input event: ", event)
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -332,6 +375,7 @@ func _input(event):
 				_handle_mouse_release(event.position)
 
 func _handle_mouse_click(position: Vector2):
+	print("[GameManager] Mouse click at ", position)
 	# Check if clicking on a grabbable object
 	for obj_id in game_objects:
 		var obj = game_objects[obj_id]
@@ -346,6 +390,7 @@ func _handle_mouse_click(position: Vector2):
 				break
 
 func _handle_mouse_release(position: Vector2):
+	print("[GameManager] Mouse release at ", position)
 	# Release any grabbed object
 	for obj_id in game_objects:
 		var obj = game_objects[obj_id]
