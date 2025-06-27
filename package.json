@@ -6,9 +6,12 @@
   "scripts": {
     "build-client": "cd client && npm install && npm run build",
     "deploy-client": "rm -rf /var/www/escape-room-client/* && cp -r client/build/* /var/www/escape-room-client/ && chown -R www-data:www-data /var/www/escape-room-client",
-    "deploy-server": "cd server && npm install && pm2 stop escape-room-server escape-room-lobby || true && pm2 start index.js --name escape-room-server --cwd /home/pi/escape-room/server --update-env && pm2 start lobby.js --name escape-room-lobby --cwd /home/pi/escape-room/server --update-env && pm2 restart all && pm2 flush",
+    "deploy-server": "cd server && npm install && pm2 stop escape-room-server escape-room-lobby || true && pm2 start index.js --name escape-room-server --cwd /home/nick/Documents/HackClub/projects/cooppuzzlegame/server --update-env && pm2 start lobby.js --name escape-room-lobby --cwd /home/nick/Documents/HackClub/projects/cooppuzzlegame/server --update-env && pm2 restart all && pm2 flush",
     "reload-nginx": "systemctl reload nginx",
-    "deploy": "npm run build-client && npm run deploy-client && npm run deploy-server && npm run reload-nginx"
+    "deploy": "npm run build-client && npm run deploy-client && npm run deploy-server && npm run reload-nginx",
+    "start-local": "cd client && npm run dev -- --port 5173",
+    "start-server": "cd server && npm install && node index.js",
+    "start-lobby": "cd server && npm install && node lobby.js"
   },
   "repository": {
     "type": "git",
