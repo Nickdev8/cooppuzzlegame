@@ -38,6 +38,7 @@
 		godotGame.onload = () => {
 			isGameLoaded = true;
 			loadingMessage = 'Game loaded! Connecting to server...';
+			console.log('Godot game iframe loaded successfully');
 			
 			// Pass lobby information to Godot game
 			setTimeout(() => {
@@ -51,16 +52,22 @@
 						serverUrl = `wss://${window.location.hostname}/socket.io/`;
 					}
 					
-					godotGame.contentWindow.postMessage({
+					const lobbyInfo = {
 						type: 'LOBBY_INFO',
 						lobbyCode: lobbyCode,
 						serverUrl: serverUrl
-					}, '*');
+					};
+					
+					console.log('Sending lobby info to Godot game:', lobbyInfo);
+					godotGame.contentWindow.postMessage(lobbyInfo, '*');
+				} else {
+					console.error('Godot game contentWindow is not available');
 				}
 			}, 1000);
 		};
 
-		godotGame.onerror = () => {
+		godotGame.onerror = (error) => {
+			console.error('Failed to load Godot game:', error);
 			errorMessage = 'Failed to load Godot game. Please check if the game files are available.';
 		};
 

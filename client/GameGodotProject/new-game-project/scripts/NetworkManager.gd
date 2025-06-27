@@ -72,7 +72,11 @@ func _lobby_info_received(info: Dictionary):
 	print("Connecting to server: ", server_url)
 	print("Joining lobby: ", lobby_code)
 	
-	# Automatically connect to the server
+	# For now, just print the info without connecting
+	print("[NetworkManager] Lobby info received, but not connecting yet for testing")
+	
+	# Automatically connect to the server after a delay
+	await get_tree().create_timer(3.0).timeout
 	connect_to_server()
 
 func _on_connect_button_pressed():
@@ -87,11 +91,15 @@ func connect_to_server():
 		var js = Engine.get_singleton("JavaScript")
 		
 		# Convert WebSocket URL to Socket.IO URL
-		var socket_io_url = server_url.replace("/game-ws/", "/socket.io/")
+		var socket_io_url = server_url
 		if socket_io_url.begins_with("wss://"):
 			socket_io_url = socket_io_url.replace("wss://", "https://")
 		elif socket_io_url.begins_with("ws://"):
 			socket_io_url = socket_io_url.replace("ws://", "http://")
+		
+		# Remove the /socket.io/ path since Socket.IO client will add it
+		if socket_io_url.ends_with("/socket.io/"):
+			socket_io_url = socket_io_url.replace("/socket.io/", "/")
 		
 		print("[NetworkManager] Connecting to Socket.IO server: ", socket_io_url)
 		
