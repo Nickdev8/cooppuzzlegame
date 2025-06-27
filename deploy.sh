@@ -70,7 +70,7 @@ check_sudo_access() {
 # Function to check project structure
 check_project_structure() {
     echo_info "=== Checking Project Structure ==="
-    local project_root="/home/nick/Documents/HackClub/projects/cooppuzzlegame"
+    local project_root="/home/pi/escape-room"
     
     if [ ! -d "$project_root" ]; then
         echo_error "Project root directory $project_root does not exist"
@@ -100,21 +100,21 @@ check_project_structure
 # Fix permissions for build
 echo_info "=== Fixing Permissions ==="
 echo_debug "Fixing permissions for client directory..."
-sudo chown -R $(whoami):$(whoami) /home/nick/Documents/HackClub/projects/cooppuzzlegame/client
+sudo chown -R $(whoami):$(whoami) /home/pi/escape-room/client
 check_exit_status $? "Client permissions fix"
 
 echo_debug "Fixing permissions for server directory..."
-sudo chown -R $(whoami):$(whoami) /home/nick/Documents/HackClub/projects/cooppuzzlegame/server
+sudo chown -R $(whoami):$(whoami) /home/pi/escape-room/server
 check_exit_status $? "Server permissions fix"
 
 # Build client
 echo_info "=== Building Client ==="
-cd /home/nick/Documents/HackClub/projects/cooppuzzlegame/client
+cd /home/pi/escape-room/client
 echo_debug "Changed to client directory: $(pwd)"
 
 echo_debug "Cleaning previous builds..."
-rm -rf /home/nick/Documents/HackClub/projects/cooppuzzlegame/client/.svelte-kit
-rm -rf /home/nick/Documents/HackClub/projects/cooppuzzlegame/client/build
+rm -rf /home/pi/escape-room/client/.svelte-kit
+rm -rf /home/pi/escape-room/client/build
 check_exit_status $? "Client cleanup"
 
 echo_debug "Installing client dependencies..."
@@ -149,7 +149,7 @@ sudo ls -la /var/www/escape-room-client/
 
 # Build and deploy server
 echo_info "=== Building and Deploying Server ==="
-cd /home/nick/Documents/HackClub/projects/cooppuzzlegame/server
+cd /home/pi/escape-room/server
 echo_debug "Changed to server directory: $(pwd)"
 
 echo_debug "Installing server dependencies..."
@@ -164,11 +164,11 @@ pm2 delete escape-room-server 2>/dev/null || echo_warning "escape-room-server wa
 pm2 delete escape-room-lobby 2>/dev/null || echo_warning "escape-room-lobby was not running"
 
 echo_debug "Starting escape-room-server..."
-pm2 start index.js --name escape-room-server --cwd /home/nick/Documents/HackClub/projects/cooppuzzlegame/server --update-env
+pm2 start index.js --name escape-room-server --cwd /home/pi/escape-room/server --update-env
 check_exit_status $? "Server start"
 
 echo_debug "Starting escape-room-lobby..."
-pm2 start lobby.js --name escape-room-lobby --cwd /home/nick/Documents/HackClub/projects/cooppuzzlegame/server --update-env
+pm2 start lobby.js --name escape-room-lobby --cwd /home/pi/escape-room/server --update-env
 check_exit_status $? "Lobby start"
 
 echo_debug "Clearing PM2 logs..."
