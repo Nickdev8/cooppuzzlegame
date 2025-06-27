@@ -42,13 +42,13 @@
 			// Pass lobby information to Godot game
 			setTimeout(() => {
 				if (godotGame.contentWindow) {
-					// Use the correct WebSocket URL based on environment
+					// Use the correct Socket.IO URL based on environment
 					let serverUrl;
 					if (window.location.hostname === 'localhost') {
 						serverUrl = 'ws://localhost:3080';
 					} else {
-						// For production, use the nginx proxy
-						serverUrl = `wss://${window.location.hostname}/game-ws/`;
+						// For production, use the nginx proxy for Socket.IO
+						serverUrl = `wss://${window.location.hostname}/socket.io/`;
 					}
 					
 					godotGame.contentWindow.postMessage({
