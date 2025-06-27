@@ -222,7 +222,8 @@ func _send_message(event: String, data: Dictionary):
 func send_player_update(data: Dictionary):
 	# Add local cursor position to data
 	if Input:
-		data["cursor_position"] = {"x": Input.get_mouse_position().x, "y": Input.get_mouse_position().y}
+		var mouse_pos = get_viewport().get_mouse_position()
+		data["cursor_position"] = {"x": mouse_pos.x, "y": mouse_pos.y}
 	print("[NetworkManager] Sending player update: ", data)
 	_send_message("playerUpdate", data)
 
