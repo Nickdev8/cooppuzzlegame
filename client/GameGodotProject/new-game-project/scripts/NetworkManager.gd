@@ -102,71 +102,96 @@ func connect_to_server():
 			socket_io_url = socket_io_url.replace("/socket.io/", "/")
 		
 		print("[NetworkManager] Connecting to Socket.IO server: ", socket_io_url)
+		print("[NetworkManager] Lobby code: ", lobby_code)
 		
-		# Load Socket.IO client and connect
+		# Load Socket.IO client and connect with better error handling
 		js.eval("""
-			// Load Socket.IO client
+			console.log('Setting up Socket.IO connection...');
+			
+			// Load Socket.IO client if not already loaded
 			if (!window.io) {
+				console.log('Loading Socket.IO client...');
 				var script = document.createElement('script');
 				script.src = 'https://cdn.socket.io/4.7.2/socket.io.min.js';
 				script.onload = function() {
+					console.log('Socket.IO client loaded successfully');
 					window.godot_socket_io_ready = true;
+					window.godot_connect_socket_io();
+				};
+				script.onerror = function() {
+					console.error('Failed to load Socket.IO client');
 				};
 				document.head.appendChild(script);
 			} else {
+				console.log('Socket.IO client already loaded');
 				window.godot_socket_io_ready = true;
+				window.godot_connect_socket_io();
 			}
-		""")
-		
-		# Wait for Socket.IO to load and then connect
-		await get_tree().create_timer(1.0).timeout
-		
-		js.eval("""
-			if (window.godot_socket_io_ready && !window.godot_socket) {
-				window.godot_socket = io('""" + socket_io_url + """', {
-					transports: ['websocket', 'polling']
-				});
+			
+			// Function to connect to Socket.IO
+			window.godot_connect_socket_io = function() {
+				if (!window.io) {
+					console.error('Socket.IO not available');
+					return;
+				}
 				
-				window.godot_socket.on('connect', function() {
-					console.log('Connected to Socket.IO server');
-					window.godot_socket_connected = true;
-					window.godot_socket.emit('joinPhysics', { lobby: '""" + lobby_code + """' });
-				});
-				
-				window.godot_socket.on('disconnect', function() {
-					console.log('Disconnected from Socket.IO server');
-					window.godot_socket_connected = false;
-				});
-				
-				window.godot_socket.on('joinedPhysics', function(data) {
-					console.log('Joined physics lobby:', data);
-				});
-				
-				window.godot_socket.on('levelInfo', function(data) {
-					console.log('Level info received:', data);
-					window.godot_level_info = data;
-				});
-				
-				window.godot_socket.on('levelChanged', function(data) {
-					console.log('Level changed:', data);
-					window.godot_level_changed = data;
-				});
-				
-				window.godot_socket.on('playerUpdate', function(data) {
-					console.log('Player update received:', data);
-					window.godot_player_update = data;
-				});
-				
-				window.godot_socket.on('objectInteraction', function(data) {
-					console.log('Object interaction received:', data);
-					window.godot_object_interaction = data;
-				});
-				
-				window.godot_socket.on('playerDisconnected', function(data) {
-					console.log('Player disconnected:', data);
-					window.godot_player_disconnected = data;
-				});
-			}
+				try {
+					console.log('Creating Socket.IO connection to: """ + socket_io_url + """');
+					window.godot_socket = io('""" + socket_io_url + """', {
+						transports: ['websocket', 'polling'],
+						timeout: 20000,
+						forceNew: true
+					});
+					
+					window.godot_socket.on('connect', function() {
+						console.log('✅ Connected to Socket.IO server');
+						window.godot_socket_connected = true;
+						window.godot_socket.emit('joinPhysics', { lobby: '""" + lobby_code + """' });
+					});
+					
+					window.godot_socket.on('connect_error', function(error) {
+						console.error('❌ Socket.IO connection error:', error);
+						window.godot_socket_connected = false;
+					});
+					
+					window.godot_socket.on('disconnect', function(reason) {
+						console.log('❌ Disconnected from Socket.IO server:', reason);
+						window.godot_socket_connected = false;
+					});
+					
+					window.godot_socket.on('joinedPhysics', function(data) {
+						console.log('✅ Joined physics lobby:', data);
+					});
+					
+					window.godot_socket.on('levelInfo', function(data) {
+						console.log('📋 Level info received:', data);
+						window.godot_level_info = data;
+					});
+					
+					window.godot_socket.on('levelChanged', function(data) {
+						console.log('🔄 Level changed:', data);
+						window.godot_level_changed = data;
+					});
+					
+					window.godot_socket.on('playerUpdate', function(data) {
+						console.log('👤 Player update received:', data);
+						window.godot_player_update = data;
+					});
+					
+					window.godot_socket.on('objectInteraction', function(data) {
+						console.log('🎯 Object interaction received:', data);
+						window.godot_object_interaction = data;
+					});
+					
+					window.godot_socket.on('playerDisconnected', function(data) {
+						console.log('👋 Player disconnected:', data);
+						window.godot_player_disconnected = data;
+					});
+					
+				} catch (error) {
+					console.error('❌ Error creating Socket.IO connection:', error);
+				}
+			};
 		""")
 		
 		socket_io_connected = true
