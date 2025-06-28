@@ -131,11 +131,10 @@ func _on_data_received():
 	var packet = websocket.get_peer(1).get_packet()
 	var message = packet.get_string_from_utf8()
 	
-	try:
-		var data = JSON.parse_string(message)
-		if data and data.has("type"):
-			_handle_message(data)
-	except:
+	var data = JSON.parse_string(message)
+	if data and data.has("type"):
+		_handle_message(data)
+	else:
 		print("[NetworkManager] Error parsing message: ", message)
 
 func _handle_message(data: Dictionary):
