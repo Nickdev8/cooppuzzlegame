@@ -13,7 +13,7 @@ const server = http.createServer(app);
 const SCENE_FILE = path.join(__dirname, 'scene.json');
 
 // ─── LOBBY MANAGEMENT ─────────────────────────────────────────────────────────
-const lobbies = new Map(); // lobbyCode -> { connections: Set, currentLevel, gameState, levelData, playerStates }
+const lobbies = new Map(); // lobbyCode -> { connections: Set, players: Map }
 
 // Global lobby for unlimited players
 let globalLobby = null;
@@ -24,73 +24,35 @@ function clearExistingLobbies() {
   console.log('Cleared existing lobbies');
 }
 
-function createGlobalLobby() {
-  if (!globalLobby) {
-    globalLobby = createLobbyWorld('GLOBAL');
-    globalLobby.isGlobal = true;
-    globalLobby.maxPlayers = Infinity; // Unlimited players
-  }
-  return globalLobby;
-}
-
-function getGlobalLobby() {
-  return createGlobalLobby();
-}
-
-function createLobbyWorld(lobbyCode) {
-  let currentLevel = 0;
-  let gameState = 'playing'; // 'playing', 'levelComplete', 'transitioning', 'completed'
-  let levelData = null;
-  let playerStates = new Map(); // connectionId -> { position, dragging, etc. }
-
-  function loadLevel(levelIndex) {
-    // Load scene data
-    const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
-    const levels = sceneData.levels;
-    
-    if (levelIndex >= levels.length) {
-      console.log('All levels completed!');
-      gameState = 'completed';
-      return;
-    }
-    
-    levelData = levels[levelIndex];
-    currentLevel = levelIndex;
-    gameState = 'playing';
-    
-    console.log(`Loading level ${levelIndex + 1}: ${levelData.name}`);
-  }
-  
-  // Load first level
-  loadLevel(0);
-  
-  return { 
-    connections: new Set(),
-    currentLevel,
-    gameState,
-    levelData,
-    playerStates,
-    loadLevel
-  };
-}
-
 function getLobbyWorld(lobbyCode) {
   if (lobbyCode === 'GLOBAL') {
-    return getGlobalLobby();
+    if (!globalLobby) {
+      globalLobby = {
+        connections: new Set(),
+        players: new Map()
+      };
+    }
+    return globalLobby;
   }
+
   if (!lobbies.has(lobbyCode)) {
-    lobbies.set(lobbyCode, createLobbyWorld(lobbyCode));
+    lobbies.set(lobbyCode, {
+      connections: new Set(),
+      players: new Map()
+    });
   }
   return lobbies.get(lobbyCode);
 }
 
-// ─── WEBSOCKET SERVER ─────────────────────────────────────────────────────────
+// ─── WEB SOCKET SERVER ─────────────────────────────────────────────────────
 const wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
+  let playerId = null;
   let lobbyCode = null;
   let lobbyWorld = null;
-  let playerId = null;
+
+  console.log('🔌 New WebSocket connection');
 
   ws.on('message', (message) => {
     try {
@@ -100,191 +62,122 @@ wss.on('connection', (ws) => {
       
       // Handle different message types
       switch (data.type) {
-        case 'joinPhysics':
-          lobbyCode = data.lobby;
+        case 'mouse':
+          lobbyCode = data.lobby || 'GLOBAL';
           lobbyWorld = getLobbyWorld(lobbyCode);
-          lobbyWorld.connections.add(ws);
-          playerId = ws._socket.remoteAddress + ':' + Date.now(); // Simple ID generation
-          ws.playerId = playerId;
+          playerId = data.player_id;
           
-          // Send join confirmation
-          ws.send(JSON.stringify({
-            type: 'joinedPhysics',
-            data: { clientSideOwnershipEnabled: true }
-          }));
+          // Add player to lobby if not already there
+          if (!lobbyWorld.connections.has(ws)) {
+            lobbyWorld.connections.add(ws);
+            lobbyWorld.players.set(playerId, {
+              x: data.x,
+              y: data.y,
+              lastSeen: Date.now()
+            });
+            
+            // Send join notification to other players
+            const joinMsg = JSON.stringify({
+              type: 'joined',
+              player_id: playerId
+            });
+            broadcastToLobby(lobbyWorld, joinMsg, ws);
+            
+            console.log(`👤 Player ${playerId} joined lobby ${lobbyCode}`);
+          } else {
+            // Update player position
+            lobbyWorld.players.set(playerId, {
+              x: data.x,
+              y: data.y,
+              lastSeen: Date.now()
+            });
+          }
           
-          // Send current level info
-          ws.send(JSON.stringify({
-            type: 'levelInfo',
-            data: {
-              currentLevel: lobbyWorld.currentLevel,
-              levelData: lobbyWorld.levelData,
-              gameState: lobbyWorld.gameState
-            }
-          }));
-          
-          console.log(`Player ${playerId} joined lobby ${lobbyCode}`);
-          break;
-          
-        case 'playerUpdate':
-          if (!lobbyWorld) return;
-          
-          // Update player state
-          lobbyWorld.playerStates.set(playerId, data.data);
-          
-          // Broadcast to other players in the lobby
-          const playerUpdateMessage = JSON.stringify({
-            type: 'playerUpdate',
-            data: {
-              id: playerId,
-              ...data.data
-            }
+          // Broadcast mouse position to other players in the same lobby
+          const mouseMsg = JSON.stringify({
+            type: 'mouse',
+            player_id: playerId,
+            x: data.x,
+            y: data.y
           });
-          
-          lobbyWorld.connections.forEach(connection => {
-            if (connection !== ws && connection.readyState === WebSocket.OPEN) {
-              connection.send(playerUpdateMessage);
-            }
-          });
+          broadcastToLobby(lobbyWorld, mouseMsg, ws);
           break;
           
-        case 'objectInteraction':
-          if (!lobbyWorld) return;
-          
-          // Broadcast object interaction to all players in lobby
-          const interactionMessage = JSON.stringify({
-            type: 'objectInteraction',
-            data: {
-              id: playerId,
-              ...data.data
-            }
-          });
-          
-          lobbyWorld.connections.forEach(connection => {
-            if (connection.readyState === WebSocket.OPEN) {
-              connection.send(interactionMessage);
-            }
-          });
-          break;
-          
-        case 'levelComplete':
-          if (!lobbyWorld) return;
-          console.log(`Client ${playerId} completed level ${lobbyWorld.currentLevel + 1}`);
-          
-          // Trigger level transition
-          lobbyWorld.gameState = 'levelComplete';
-          
-          // Load next level after a delay
-          setTimeout(() => {
-            if (lobbyWorld.gameState === 'levelComplete') {
-              lobbyWorld.gameState = 'transitioning';
-              lobbyWorld.loadLevel(lobbyWorld.currentLevel + 1);
-              
-              // Notify all clients about level change
-              const levelChangedMessage = JSON.stringify({
-                type: 'levelChanged',
-                data: {
-                  currentLevel: lobbyWorld.currentLevel,
-                  levelData: lobbyWorld.levelData,
-                  gameState: lobbyWorld.gameState
-                }
-              });
-              
-              lobbyWorld.connections.forEach(connection => {
-                if (connection.readyState === WebSocket.OPEN) {
-                  connection.send(levelChangedMessage);
-                }
-              });
-            }
-          }, 2000);
-          break;
-          
-        case 'skipLevel':
-          if (!lobbyWorld) return;
-          console.log(`Client ${playerId} requested to skip level ${lobbyWorld.currentLevel + 1}`);
-          
-          // Trigger level transition immediately
-          lobbyWorld.gameState = 'levelComplete';
-          
-          // Load next level after a short delay
-          setTimeout(() => {
-            if (lobbyWorld.gameState === 'levelComplete') {
-              lobbyWorld.gameState = 'transitioning';
-              lobbyWorld.loadLevel(lobbyWorld.currentLevel + 1);
-              
-              // Notify all clients about level change
-              const levelChangedMessage = JSON.stringify({
-                type: 'levelChanged',
-                data: {
-                  currentLevel: lobbyWorld.currentLevel,
-                  levelData: lobbyWorld.levelData,
-                  gameState: lobbyWorld.gameState
-                }
-              });
-              
-              lobbyWorld.connections.forEach(connection => {
-                if (connection.readyState === WebSocket.OPEN) {
-                  connection.send(levelChangedMessage);
-                }
-              });
-            }
-          }, 500);
-          break;
+        default:
+          console.log('❓ Unknown message type:', data.type);
       }
     } catch (error) {
-      console.error('Error parsing message:', error);
+      console.error('❌ Error processing message:', error);
     }
   });
 
-  ws.on('close', (code, reason) => {
-    if (lobbyWorld) {
-      // Remove player state
-      lobbyWorld.playerStates.delete(playerId);
-      
+  ws.on('close', () => {
+    if (lobbyWorld && playerId) {
       lobbyWorld.connections.delete(ws);
+      lobbyWorld.players.delete(playerId);
       
-      // Notify other players about disconnection
-      const disconnectMessage = JSON.stringify({
-        type: 'playerDisconnected',
-        data: { id: playerId }
+      // Send leave notification to other players
+      const leaveMsg = JSON.stringify({
+        type: 'left',
+        player_id: playerId
       });
+      broadcastToLobby(lobbyWorld, leaveMsg);
       
-      lobbyWorld.connections.forEach(connection => {
-        if (connection.readyState === WebSocket.OPEN) {
-          connection.send(disconnectMessage);
-        }
-      });
-      
-      console.log(`Player ${playerId} disconnected from lobby ${lobbyCode}`);
-      
-      if (lobbyWorld.connections.size === 0) {
-        // Clean up lobby world
-        lobbies.delete(lobbyCode);
-      }
+      console.log(`👋 Player ${playerId} left lobby ${lobbyCode}`);
     }
+  });
+
+  ws.on('error', (error) => {
+    console.error('❌ WebSocket error:', error);
   });
 });
 
-// ─── HTTP ROUTES ─────────────────────────────────────────────────────────
+function broadcastToLobby(lobbyWorld, message, excludeWs = null) {
+  for (const connection of lobbyWorld.connections) {
+    if (connection !== excludeWs && connection.readyState === WebSocket.OPEN) {
+      connection.send(message);
+    }
+  }
+}
+
+// ─── HTTP ROUTES ───────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', lobbies: lobbies.size });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.get('/api/global-player-count', (req, res) => {
-  const count = globalLobby ? globalLobby.connections.size : 0;
-  res.json({ count });
-});
-
-app.get('/api/levels', (req, res) => {
+app.get('/scene', (req, res) => {
   try {
-    const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
-    res.json({ levels: sceneData.levels });
+    const sceneData = fs.readFileSync(SCENE_FILE, 'utf8');
+    res.json(JSON.parse(sceneData));
   } catch (error) {
-    res.status(500).json({ error: 'Failed to load levels' });
+    console.error('Error reading scene file:', error);
+    res.status(500).json({ error: 'Failed to read scene data' });
   }
 });
 
-server.listen(3080, () => {
-  console.log('Godot Game Server running on https://iotservice.nl:3080');
+// ─── SERVER STARTUP ───────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3080;
+
+server.listen(PORT, () => {
+  console.log(`🚀 Simple WebSocket server running on port ${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/health`);
+  console.log(`🎮 Scene data: http://localhost:${PORT}/scene`);
+  
+  // Clear existing lobbies on startup
   clearExistingLobbies();
+});
+
+// ─── CLEANUP ──────────────────────────────────────────────────────────────
+process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down server...');
+  wss.close();
+  server.close();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n🛑 Shutting down server...');
+  wss.close();
+  server.close();
+  process.exit(0);
 });

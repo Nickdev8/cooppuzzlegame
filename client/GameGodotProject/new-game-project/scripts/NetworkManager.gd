@@ -2,220 +2,95 @@ extends Node
 
 signal connected_to_server
 signal disconnected_from_server
-signal level_info_received(level_info)
-signal level_changed(level_data)
-signal player_update_received(player_data)
-signal object_interaction_received(interaction_data)
-signal player_disconnected(player_id)
+signal player_cursor_received(player_id, x, y)
 
-var server_url: String = "ws://localhost:3080"
+var server_url: String = "wss://iotservice.nl:3080"
 var lobby_code: String = "GLOBAL"
 var is_connected: bool = false
-var lobby_info_received: bool = false
-var websocket_connected: bool = false
 var websocket: WebSocketPeer
+var my_player_id: String
 
 func _ready():
-	# Initialize WebSocket client
+	print("[SimpleNetwork] Starting simple network manager")
 	websocket = WebSocketPeer.new()
 	
-	# Listen for messages from parent window (only in web builds)
-	if OS.has_feature("web"):
-		print("[NetworkManager] Running in web build, setting up JavaScript communication")
-		# JavaScript.eval is only available in web exports
-		if Engine.has_singleton("JavaScript"):
-			var js = Engine.get_singleton("JavaScript")
-			js.eval("""
-				window.addEventListener('message', function(event) {
-					if (event.data && event.data.type === 'LOBBY_INFO') {
-						window.godot_lobby_info = event.data;
-						console.log('Lobby info received by JavaScript:', event.data);
-					}
-				});
-			""")
-			print("[NetworkManager] JavaScript communication setup complete")
-		else:
-			print("[NetworkManager] JavaScript singleton not available")
-	else:
-		print("[NetworkManager] Not running in web build")
-	
-	# Connect UI signals
-	var connect_button = get_node("../UI/ConnectionPanel/VBoxContainer/ConnectButton")
-	connect_button.pressed.connect(_on_connect_button_pressed)
-	
-	var skip_button = get_node("../GameUI/SkipButton")
-	skip_button.pressed.connect(_on_skip_button_pressed)
-	
-	# Check for lobby info from parent window (only in web builds)
-	if OS.has_feature("web"):
-		_check_for_lobby_info()
-	else:
-		# For non-web platforms, show connection UI
-		var connection_panel = get_node("../UI/ConnectionPanel")
-		if connection_panel:
-			connection_panel.visible = true
-
-func _check_for_lobby_info():
+	# Get lobby info from parent window
 	if OS.has_feature("web") and Engine.has_singleton("JavaScript"):
 		var js = Engine.get_singleton("JavaScript")
-		# Check if lobby info is available from parent window
 		var lobby_info = js.eval("window.godot_lobby_info")
-		print("[NetworkManager] Checking for lobby info: ", lobby_info)
 		if lobby_info and lobby_info.has("lobbyCode"):
-			print("[NetworkManager] Found lobby info, processing...")
-			_lobby_info_received(lobby_info)
-		else:
-			print("[NetworkManager] No lobby info found yet, retrying in 0.5 seconds...")
-			# Try again after a short delay
-			await get_tree().create_timer(0.5).timeout
-			_check_for_lobby_info()
-	else:
-		print("[NetworkManager] Not in web build or JavaScript not available")
-		# Fallback: try to connect with default settings
-		print("[NetworkManager] Attempting connection with default settings...")
-		connect_to_server()
-
-func _lobby_info_received(info: Dictionary):
-	if lobby_info_received:
-		return
-		
-	lobby_info_received = true
+			lobby_code = lobby_info.lobbyCode
+			if lobby_info.has("serverUrl"):
+				server_url = lobby_info.serverUrl
+			print("[SimpleNetwork] Got lobby info: ", lobby_info)
 	
-	# Update server URL and lobby code
-	if info.has("serverUrl"):
-		server_url = info.serverUrl
-	if info.has("lobbyCode"):
-		lobby_code = info.lobbyCode
-	
-	print("Received lobby info: ", info)
-	print("Connecting to server: ", server_url)
-	print("Joining lobby: ", lobby_code)
-	
-	# Connect to the server immediately
-	connect_to_server()
-
-func _on_connect_button_pressed():
-	var server_input = get_node("../UI/ConnectionPanel/VBoxContainer/ServerInput")
-	if server_input.text != "":
-		server_url = server_input.text
-	
+	# Connect to server
 	connect_to_server()
 
 func connect_to_server():
-	print("[NetworkManager] Connecting to WebSocket server: ", server_url)
-	print("[NetworkManager] Lobby code: ", lobby_code)
-	
-	# Connect to WebSocket server
+	print("[SimpleNetwork] Connecting to: ", server_url)
 	var error = websocket.connect_to_url(server_url)
 	if error != OK:
-		print("[NetworkManager] Failed to connect to WebSocket server: ", error)
+		print("[SimpleNetwork] Failed to connect: ", error)
 		return
 	
-	websocket_connected = true
-	is_connected = true
-	print("[NetworkManager] WebSocket connection initiated")
+	# Generate a simple player ID
+	my_player_id = str(randi()) + "_" + str(Time.get_unix_time_from_system())
+	print("[SimpleNetwork] My player ID: ", my_player_id)
 
 func _process(_delta):
-	if websocket_connected:
+	if websocket:
 		websocket.poll()
 		
-		# Check connection status
 		var state = websocket.get_ready_state()
 		if state == WebSocketPeer.STATE_OPEN:
-			# Check if we just connected
 			if not is_connected:
-				print("[NetworkManager] ✅ Connected to WebSocket server")
+				print("[SimpleNetwork] ✅ Connected!")
 				is_connected = true
 				emit_signal("connected_to_server")
-				
-				# Join the physics lobby
-				var join_message = {
-					"type": "joinPhysics",
-					"lobby": lobby_code
-				}
-				_send_message(join_message)
+			
+			# Send mouse position
+			var mouse_pos = get_viewport().get_mouse_position()
+			send_mouse_position(mouse_pos.x, mouse_pos.y)
 			
 			# Check for incoming messages
 			while websocket.get_available_packet_count() > 0:
 				var packet = websocket.get_packet()
 				var message = packet.get_string_from_utf8()
+				handle_message(message)
 				
-				var data = JSON.parse_string(message)
-				if data and data.has("type"):
-					_handle_message(data)
-				else:
-					print("[NetworkManager] Error parsing message: ", message)
 		elif state == WebSocketPeer.STATE_CLOSED:
-			print("[NetworkManager] ❌ WebSocket connection closed")
-			websocket_connected = false
-			is_connected = false
-			emit_signal("disconnected_from_server")
+			if is_connected:
+				print("[SimpleNetwork] ❌ Disconnected")
+				is_connected = false
+				emit_signal("disconnected_from_server")
 
-func _handle_message(data: Dictionary):
-	var message_type = data.get("type", "")
-	var message_data = data.get("data", {})
-	
-	match message_type:
-		"joinedPhysics":
-			print("[NetworkManager] ✅ Joined physics lobby")
-		"levelInfo":
-			print("[NetworkManager] 📋 Level info received: ", message_data)
-			emit_signal("level_info_received", message_data)
-		"levelChanged":
-			print("[NetworkManager] 🔄 Level changed: ", message_data)
-			emit_signal("level_changed", message_data)
-		"playerUpdate":
-			print("[NetworkManager] 👤 Player update received: ", message_data)
-			emit_signal("player_update_received", message_data)
-		"objectInteraction":
-			print("[NetworkManager] 🎯 Object interaction received: ", message_data)
-			emit_signal("object_interaction_received", message_data)
-		"playerDisconnected":
-			print("[NetworkManager] 👋 Player disconnected: ", message_data.get("id", ""))
-			emit_signal("player_disconnected", message_data.get("id", ""))
-
-func _send_message(data: Dictionary):
-	if websocket_connected and websocket.get_ready_state() == WebSocketPeer.STATE_OPEN:
+func send_mouse_position(x: float, y: float):
+	if is_connected:
+		var data = {
+			"type": "mouse",
+			"player_id": my_player_id,
+			"lobby": lobby_code,
+			"x": x,
+			"y": y
+		}
 		var message = JSON.stringify(data)
 		var packet = message.to_utf8_buffer()
 		websocket.send(packet)
-		print("[NetworkManager] Sending message: ", data)
 
-func send_player_update(data: Dictionary):
-	# Add local cursor position to data
-	if Input:
-		var mouse_pos = get_viewport().get_mouse_position()
-		data["cursor_position"] = {"x": mouse_pos.x, "y": mouse_pos.y}
-	print("[NetworkManager] Sending player update: ", data)
-	_send_message({
-		"type": "playerUpdate",
-		"data": data
-	})
-
-func send_object_interaction(data: Dictionary):
-	print("[NetworkManager] Sending object interaction: ", data)
-	_send_message({
-		"type": "objectInteraction",
-		"data": data
-	})
-
-func send_level_complete():
-	print("[NetworkManager] Sending level complete")
-	_send_message({
-		"type": "levelComplete",
-		"data": {}
-	})
-
-func _on_skip_button_pressed():
-	print("[NetworkManager] Skip level pressed")
-	_send_message({
-		"type": "skipLevel",
-		"data": {}
-	})
-
-func disconnect_from_server():
-	if websocket_connected:
-		websocket.close()
-		print("[NetworkManager] Disconnected from WebSocket server")
-		websocket_connected = false
-		is_connected = false 
+func handle_message(message: String):
+	var data = JSON.parse_string(message)
+	if data and data.has("type"):
+		match data.type:
+			"mouse":
+				var player_id = data.get("player_id", "")
+				if player_id != my_player_id:
+					var x = data.get("x", 0)
+					var y = data.get("y", 0)
+					emit_signal("player_cursor_received", player_id, x, y)
+			"joined":
+				print("[SimpleNetwork] Player joined: ", data.get("player_id", ""))
+			"left":
+				print("[SimpleNetwork] Player left: ", data.get("player_id", ""))
+	else:
+		print("[SimpleNetwork] Unknown message: ", message) 
