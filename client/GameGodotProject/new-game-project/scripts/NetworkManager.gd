@@ -8,13 +8,17 @@ signal player_update_received(player_data)
 signal object_interaction_received(interaction_data)
 signal player_disconnected(player_id)
 
-var server_url: String = "ws://localhost:3080"
+var server_url: String = "ws://localhost:9001"
 var lobby_code: String = "GLOBAL"
+var player_id: String = ""
 var is_connected: bool = false
 var lobby_info_received: bool = false
-var socket_io_connected: bool = false
+var ws: WebSocketPeer
 
 func _ready():
+	# Generate a unique player ID
+	player_id = str(randi())
+	
 	# Listen for messages from parent window (only in web builds)
 	if OS.has_feature("web"):
 		# JavaScript.eval is only available in web exports
@@ -83,200 +87,121 @@ func _on_connect_button_pressed():
 	connect_to_server()
 
 func connect_to_server():
-	if OS.has_feature("web") and Engine.has_singleton("JavaScript"):
-		var js = Engine.get_singleton("JavaScript")
-		
-		# Convert WebSocket URL to Socket.IO URL
-		var socket_io_url = server_url
-		if socket_io_url.begins_with("wss://"):
-			socket_io_url = socket_io_url.replace("wss://", "https://")
-		elif socket_io_url.begins_with("ws://"):
-			socket_io_url = socket_io_url.replace("ws://", "http://")
-		
-		# Remove any trailing /socket.io/ path since Socket.IO client will add it
-		if socket_io_url.ends_with("/socket.io/"):
-			socket_io_url = socket_io_url.replace("/socket.io/", "/")
-		elif socket_io_url.ends_with("/socket.io"):
-			socket_io_url = socket_io_url.replace("/socket.io", "/")
-		
-		# Ensure we have a trailing slash for the base URL
-		if not socket_io_url.ends_with("/"):
-			socket_io_url += "/"
-		
-		print("[NetworkManager] Connecting to Socket.IO server: ", socket_io_url)
-		print("[NetworkManager] Lobby code: ", lobby_code)
-		
-		# Load Socket.IO client and connect with better error handling
-		js.eval("""
-			console.log('Setting up Socket.IO connection...');
-			
-			// Load Socket.IO client if not already loaded
-			if (!window.io) {
-				console.log('Loading Socket.IO client...');
-				var script = document.createElement('script');
-				script.src = 'https://cdn.socket.io/4.7.2/socket.io.min.js';
-				script.onload = function() {
-					console.log('Socket.IO client loaded successfully');
-					window.godot_socket_io_ready = true;
-					window.godot_connect_socket_io();
-				};
-				script.onerror = function() {
-					console.error('Failed to load Socket.IO client');
-				};
-				document.head.appendChild(script);
-			} else {
-				console.log('Socket.IO client already loaded');
-				window.godot_socket_io_ready = true;
-				window.godot_connect_socket_io();
-			}
-			
-			// Function to connect to Socket.IO
-			window.godot_connect_socket_io = function() {
-				if (!window.io) {
-					console.error('Socket.IO not available');
-					return;
-				}
-				
-				try {
-					console.log('Creating Socket.IO connection to: """ + socket_io_url + """');
-					window.godot_socket = io('""" + socket_io_url + """', {
-						transports: ['websocket', 'polling'],
-						timeout: 20000,
-						forceNew: true,
-						path: '/socket.io/'
-					});
-					
-					window.godot_socket.on('connect', function() {
-						console.log('✅ Connected to Socket.IO server');
-						window.godot_socket_connected = true;
-						window.godot_socket.emit('joinPhysics', { lobby: '""" + lobby_code + """' });
-					});
-					
-					window.godot_socket.on('connect_error', function(error) {
-						console.error('❌ Socket.IO connection error:', error);
-						window.godot_socket_connected = false;
-					});
-					
-					window.godot_socket.on('disconnect', function(reason) {
-						console.log('❌ Disconnected from Socket.IO server:', reason);
-						window.godot_socket_connected = false;
-					});
-					
-					window.godot_socket.on('joinedPhysics', function(data) {
-						console.log('✅ Joined physics lobby:', data);
-					});
-					
-					window.godot_socket.on('levelInfo', function(data) {
-						console.log('📋 Level info received:', data);
-						window.godot_level_info = data;
-					});
-					
-					window.godot_socket.on('levelChanged', function(data) {
-						console.log('🔄 Level changed:', data);
-						window.godot_level_changed = data;
-					});
-					
-					window.godot_socket.on('playerUpdate', function(data) {
-						console.log('👤 Player update received:', data);
-						window.godot_player_update = data;
-					});
-					
-					window.godot_socket.on('objectInteraction', function(data) {
-						console.log('🎯 Object interaction received:', data);
-						window.godot_object_interaction = data;
-					});
-					
-					window.godot_socket.on('playerDisconnected', function(data) {
-						console.log('👋 Player disconnected:', data);
-						window.godot_player_disconnected = data;
-					});
-					
-				} catch (error) {
-					console.error('❌ Error creating Socket.IO connection:', error);
-				}
-			};
-		""")
-		
-		socket_io_connected = true
-		is_connected = true
-		print("[NetworkManager] Socket.IO connection initiated")
-		emit_signal("connected_to_server")
-	else:
-		print("[NetworkManager] Socket.IO not available in non-web builds")
+	# Create WebSocket connection
+	ws = WebSocketPeer.new()
+	var error = ws.connect_to_url(server_url)
+	
+	if error != OK:
+		print("[NetworkManager] Failed to connect to WebSocket server: ", error)
+		return
+	
+	print("[NetworkManager] Connecting to WebSocket server: ", server_url)
+	print("[NetworkManager] Player ID: ", player_id)
+	print("[NetworkManager] Lobby code: ", lobby_code)
+	
+	is_connected = true
 
 func _process(_delta):
-	if OS.has_feature("web") and Engine.has_singleton("JavaScript") and socket_io_connected:
-		var js = Engine.get_singleton("JavaScript")
+	if ws and is_connected:
+		ws.poll()
 		
-		# Check for new messages from Socket.IO
-		var level_info = js.eval("window.godot_level_info")
-		if level_info:
-			js.eval("window.godot_level_info = null")
-			emit_signal("level_info_received", level_info)
-		
-		var level_changed = js.eval("window.godot_level_changed")
-		if level_changed:
-			js.eval("window.godot_level_changed = null")
-			emit_signal("level_changed", level_changed)
-		
-		var player_update = js.eval("window.godot_player_update")
-		if player_update:
-			js.eval("window.godot_player_update = null")
-			print("[NetworkManager] Player update received: ", player_update)
-			emit_signal("player_update_received", player_update)
-		
-		var object_interaction = js.eval("window.godot_object_interaction")
-		if object_interaction:
-			js.eval("window.godot_object_interaction = null")
-			print("[NetworkManager] Object interaction received: ", object_interaction)
-			emit_signal("object_interaction_received", object_interaction)
-		
-		var player_disconnected = js.eval("window.godot_player_disconnected")
-		if player_disconnected:
-			js.eval("window.godot_player_disconnected = null")
-			print("[NetworkManager] Player disconnected: ", player_disconnected.id)
-			emit_signal("player_disconnected", player_disconnected.id)
+		var state = ws.get_ready_state()
+		if state == WebSocketPeer.STATE_OPEN:
+			# Handle incoming messages
+			while ws.get_available_packet_count() > 0:
+				var packet = ws.get_packet()
+				var message = packet.get_string_from_utf8()
+				
+				try:
+					var data = JSON.parse_string(message)
+					_handle_message(data)
+				except:
+					print("[NetworkManager] Failed to parse message: ", message)
+					
+		elif state == WebSocketPeer.STATE_CLOSED:
+			print("[NetworkManager] WebSocket connection closed")
+			is_connected = false
+			emit_signal("disconnected_from_server")
 
-func _send_message(event: String, data: Dictionary):
-	if OS.has_feature("web") and Engine.has_singleton("JavaScript") and socket_io_connected:
-		var js = Engine.get_singleton("JavaScript")
-		js.eval("""
-			if (window.godot_socket && window.godot_socket_connected) {
-				window.godot_socket.emit('""" + event + """', """ + JSON.stringify(data) + """);
-			}
-		""")
-		print("[NetworkManager] Sending message: ", event, data)
+func _handle_message(data: Dictionary):
+	if not data.has("type"):
+		return
+		
+	match data.type:
+		"levelInfo":
+			print("[NetworkManager] Level info received: ", data)
+			emit_signal("level_info_received", data)
+			
+		"levelChanged":
+			print("[NetworkManager] Level changed: ", data)
+			emit_signal("level_changed", data)
+			
+		"gameState":
+			print("[NetworkManager] Game state received: ", data)
+			# Handle initial game state with all players
+			if data.has("players"):
+				for player_data in data.players:
+					if player_data.has("id") and player_data.id != player_id:
+						emit_signal("player_update_received", player_data)
+			
+		"playerUpdate":
+			print("[NetworkManager] Player update received: ", data)
+			if data.has("playerId") and data.playerId != player_id:
+				emit_signal("player_update_received", data.playerData)
+			
+		"objectInteraction":
+			print("[NetworkManager] Object interaction received: ", data)
+			if data.has("playerId") and data.playerId != player_id:
+				emit_signal("object_interaction_received", data.interactionData)
+			
+		"playerDisconnected":
+			print("[NetworkManager] Player disconnected: ", data.playerId)
+			emit_signal("player_disconnected", data.playerId)
+
+func _send_message(type: String, data: Dictionary = {}):
+	if ws and is_connected and ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		var message = {
+			"type": type
+		}
+		message.merge(data)
+		
+		var json_string = JSON.stringify(message)
+		var packet = json_string.to_utf8_buffer()
+		ws.put_packet(packet)
+		print("[NetworkManager] Sending message: ", type, data)
+
+func join_lobby():
+	_send_message("join", {
+		"playerId": player_id,
+		"lobbyCode": lobby_code
+	})
 
 func send_player_update(data: Dictionary):
 	# Add local cursor position to data
 	if Input:
 		var mouse_pos = get_viewport().get_mouse_position()
 		data["cursor_position"] = {"x": mouse_pos.x, "y": mouse_pos.y}
-	print("[NetworkManager] Sending player update: ", data)
-	_send_message("playerUpdate", data)
+	
+	_send_message("playerUpdate", {
+		"playerData": data
+	})
 
 func send_object_interaction(data: Dictionary):
-	print("[NetworkManager] Sending object interaction: ", data)
-	_send_message("objectInteraction", data)
+	_send_message("objectInteraction", {
+		"interactionData": data
+	})
 
 func send_level_complete():
-	print("[NetworkManager] Sending level complete")
-	_send_message("levelComplete", {})
+	_send_message("levelComplete")
 
 func _on_skip_button_pressed():
-	print("[NetworkManager] Skip level pressed")
-	_send_message("skipLevel", {})
+	_send_message("skipLevel")
 
 func disconnect_from_server():
-	if OS.has_feature("web") and Engine.has_singleton("JavaScript"):
-		var js = Engine.get_singleton("JavaScript")
-		js.eval("""
-			if (window.godot_socket) {
-				window.godot_socket.disconnect();
-				window.godot_socket = null;
-				window.godot_socket_connected = false;
-			}
-		""")
-		print("[NetworkManager] Disconnected from Socket.IO server")
-		socket_io_connected = false
-		is_connected = false 
+	if ws:
+		ws.close()
+		is_connected = false
+		print("[NetworkManager] Disconnected from WebSocket server")
+
+func _exit_tree():
+	disconnect_from_server() 
