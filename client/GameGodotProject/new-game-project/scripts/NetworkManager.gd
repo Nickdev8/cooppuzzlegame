@@ -13,15 +13,11 @@ var lobby_code: String = "GLOBAL"
 var is_connected: bool = false
 var lobby_info_received: bool = false
 var websocket_connected: bool = false
-var websocket: WebSocketClient
+var websocket: WebSocketPeer
 
 func _ready():
 	# Initialize WebSocket client
-	websocket = WebSocketClient.new()
-	websocket.connect("connection_established", _on_connection_established)
-	websocket.connect("connection_closed", _on_connection_closed)
-	websocket.connect("connection_error", _on_connection_error)
-	websocket.connect("data_received", _on_data_received)
+	websocket = WebSocketPeer.new()
 	
 	# Listen for messages from parent window (only in web builds)
 	if OS.has_feature("web"):
@@ -104,38 +100,41 @@ func connect_to_server():
 	is_connected = true
 	print("[NetworkManager] WebSocket connection initiated")
 
-func _on_connection_established(protocol: String):
-	print("[NetworkManager] ✅ Connected to WebSocket server")
-	emit_signal("connected_to_server")
-	
-	# Join the physics lobby
-	var join_message = {
-		"type": "joinPhysics",
-		"lobby": lobby_code
-	}
-	_send_message(join_message)
-
-func _on_connection_closed(was_clean_close: bool):
-	print("[NetworkManager] ❌ Disconnected from WebSocket server")
-	websocket_connected = false
-	is_connected = false
-	emit_signal("disconnected_from_server")
-
-func _on_connection_error():
-	print("[NetworkManager] ❌ WebSocket connection error")
-	websocket_connected = false
-	is_connected = false
-	emit_signal("disconnected_from_server")
-
-func _on_data_received():
-	var packet = websocket.get_peer(1).get_packet()
-	var message = packet.get_string_from_utf8()
-	
-	var data = JSON.parse_string(message)
-	if data and data.has("type"):
-		_handle_message(data)
-	else:
-		print("[NetworkManager] Error parsing message: ", message)
+func _process(_delta):
+	if websocket_connected:
+		websocket.poll()
+		
+		# Check connection status
+		var state = websocket.get_ready_state()
+		if state == WebSocketPeer.STATE_OPEN:
+			# Check if we just connected
+			if not is_connected:
+				print("[NetworkManager] ✅ Connected to WebSocket server")
+				is_connected = true
+				emit_signal("connected_to_server")
+				
+				# Join the physics lobby
+				var join_message = {
+					"type": "joinPhysics",
+					"lobby": lobby_code
+				}
+				_send_message(join_message)
+			
+			# Check for incoming messages
+			while websocket.get_available_packet_count() > 0:
+				var packet = websocket.get_packet()
+				var message = packet.get_string_from_utf8()
+				
+				var data = JSON.parse_string(message)
+				if data and data.has("type"):
+					_handle_message(data)
+				else:
+					print("[NetworkManager] Error parsing message: ", message)
+		elif state == WebSocketPeer.STATE_CLOSED:
+			print("[NetworkManager] ❌ WebSocket connection closed")
+			websocket_connected = false
+			is_connected = false
+			emit_signal("disconnected_from_server")
 
 func _handle_message(data: Dictionary):
 	var message_type = data.get("type", "")
@@ -160,15 +159,11 @@ func _handle_message(data: Dictionary):
 			print("[NetworkManager] 👋 Player disconnected: ", message_data.get("id", ""))
 			emit_signal("player_disconnected", message_data.get("id", ""))
 
-func _process(_delta):
-	if websocket_connected:
-		websocket.poll()
-
 func _send_message(data: Dictionary):
-	if websocket_connected and websocket.get_connection_status() == WebSocketClient.CONNECTION_CONNECTED:
+	if websocket_connected and websocket.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		var message = JSON.stringify(data)
 		var packet = message.to_utf8_buffer()
-		websocket.get_peer(1).put_packet(packet)
+		websocket.send(packet)
 		print("[NetworkManager] Sending message: ", data)
 
 func send_player_update(data: Dictionary):
@@ -205,7 +200,7 @@ func _on_skip_button_pressed():
 
 func disconnect_from_server():
 	if websocket_connected:
-		websocket.disconnect_from_host()
+		websocket.close()
 		print("[NetworkManager] Disconnected from WebSocket server")
 		websocket_connected = false
 		is_connected = false 
