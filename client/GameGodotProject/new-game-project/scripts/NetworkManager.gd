@@ -72,11 +72,7 @@ func _lobby_info_received(info: Dictionary):
 	print("Connecting to server: ", server_url)
 	print("Joining lobby: ", lobby_code)
 	
-	# For now, just print the info without connecting
-	print("[NetworkManager] Lobby info received, but not connecting yet for testing")
-	
-	# Automatically connect to the server after a delay
-	await get_tree().create_timer(3.0).timeout
+	# Connect to the server immediately
 	connect_to_server()
 
 func _on_connect_button_pressed():
