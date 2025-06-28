@@ -53,12 +53,15 @@ func _check_for_lobby_info():
 		var js = Engine.get_singleton("JavaScript")
 		# Check if lobby info is available from parent window
 		var lobby_info = js.eval("window.godot_lobby_info")
+		print("[NetworkManager] Checking for lobby info: ", lobby_info)
 		if lobby_info and lobby_info.has("lobbyCode"):
 			_lobby_info_received(lobby_info)
 		else:
 			# Try again after a short delay
 			await get_tree().create_timer(0.5).timeout
 			_check_for_lobby_info()
+	else:
+		print("[NetworkManager] Not in web build or JavaScript not available")
 
 func _lobby_info_received(info: Dictionary):
 	if lobby_info_received:

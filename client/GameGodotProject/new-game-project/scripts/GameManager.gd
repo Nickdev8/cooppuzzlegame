@@ -401,3 +401,11 @@ func _handle_mouse_release(position: Vector2):
 				"position": {"x": position.x, "y": position.y}
 			})
 			break 
+
+func _process(_delta):
+	# Send player updates if connected to server
+	if network_manager and network_manager.is_connected:
+		network_manager.send_player_update({
+			"x": get_viewport().get_mouse_position().x,
+			"y": get_viewport().get_mouse_position().y
+		}) 
