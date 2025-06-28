@@ -48,8 +48,8 @@
 					if (window.location.hostname === 'localhost') {
 						serverUrl = 'ws://localhost:3080';
 					} else {
-						// For production, use the nginx proxy for Socket.IO
-						serverUrl = `wss://${window.location.hostname}/socket.io/`;
+						// For production, use the base URL - Socket.IO client will add /socket.io/
+						serverUrl = `wss://${window.location.hostname}`;
 					}
 					
 					const lobbyInfo = {

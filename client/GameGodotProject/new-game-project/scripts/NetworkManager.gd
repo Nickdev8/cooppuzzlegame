@@ -97,9 +97,15 @@ func connect_to_server():
 		elif socket_io_url.begins_with("ws://"):
 			socket_io_url = socket_io_url.replace("ws://", "http://")
 		
-		# Remove the /socket.io/ path since Socket.IO client will add it
+		# Remove any trailing /socket.io/ path since Socket.IO client will add it
 		if socket_io_url.ends_with("/socket.io/"):
 			socket_io_url = socket_io_url.replace("/socket.io/", "/")
+		elif socket_io_url.ends_with("/socket.io"):
+			socket_io_url = socket_io_url.replace("/socket.io", "/")
+		
+		# Ensure we have a trailing slash for the base URL
+		if not socket_io_url.ends_with("/"):
+			socket_io_url += "/"
 		
 		print("[NetworkManager] Connecting to Socket.IO server: ", socket_io_url)
 		print("[NetworkManager] Lobby code: ", lobby_code)
@@ -140,7 +146,8 @@ func connect_to_server():
 					window.godot_socket = io('""" + socket_io_url + """', {
 						transports: ['websocket', 'polling'],
 						timeout: 20000,
-						forceNew: true
+						forceNew: true,
+						path: '/socket.io/'
 					});
 					
 					window.godot_socket.on('connect', function() {
