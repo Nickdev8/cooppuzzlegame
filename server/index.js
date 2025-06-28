@@ -3,18 +3,17 @@ const http = require('http');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-const { Server } = require('socket.io');
+const WebSocket = require('ws');
 
 const app = express();
 app.use(cors());
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
 const SCENE_FILE = path.join(__dirname, 'scene.json');
 
-// ─── LOBBY MANAGEMENT ─────────────────────────────────────────────
-const lobbies = new Map(); // lobbyCode -> { sockets: Set, currentLevel, gameState, levelData, playerStates }
+// ─── LOBBY MANAGEMENT ─────────────────────────────────────────────────────────
+const lobbies = new Map(); // lobbyCode -> { connections: Set, currentLevel, gameState, levelData, playerStates }
 
 // Global lobby for unlimited players
 let globalLobby = null;
@@ -42,7 +41,7 @@ function createLobbyWorld(lobbyCode) {
   let currentLevel = 0;
   let gameState = 'playing'; // 'playing', 'levelComplete', 'transitioning', 'completed'
   let levelData = null;
-  let playerStates = new Map(); // socketId -> { position, dragging, etc. }
+  let playerStates = new Map(); // connectionId -> { position, dragging, etc. }
 
   function loadLevel(levelIndex) {
     // Load scene data
@@ -66,7 +65,7 @@ function createLobbyWorld(lobbyCode) {
   loadLevel(0);
   
   return { 
-    sockets: new Set(),
+    connections: new Set(),
     currentLevel,
     gameState,
     levelData,
@@ -85,104 +84,180 @@ function getLobbyWorld(lobbyCode) {
   return lobbies.get(lobbyCode);
 }
 
-// ─── SOCKET.IO ─────────────────────────────────────────────────────────
-io.on('connection', socket => {
+// ─── WEBSOCKET SERVER ─────────────────────────────────────────────────────────
+const wss = new WebSocket.Server({ server });
+
+wss.on('connection', (ws) => {
   let lobbyCode = null;
   let lobbyWorld = null;
+  let playerId = null;
 
-  socket.on('joinPhysics', ({ lobby }) => {
-    lobbyCode = lobby;
-    lobbyWorld = getLobbyWorld(lobbyCode);
-    lobbyWorld.sockets.add(socket);
-    socket.join(lobbyCode);
-    socket.emit('joinedPhysics', { clientSideOwnershipEnabled: true });
-    
-    // Send current level info
-    socket.emit('levelInfo', {
-      currentLevel: lobbyWorld.currentLevel,
-      levelData: lobbyWorld.levelData,
-      gameState: lobbyWorld.gameState
-    });
-  });
-
-  socket.on('playerUpdate', (data) => {
-    if (!lobbyWorld) return;
-    
-    // Update player state
-    lobbyWorld.playerStates.set(socket.id, data);
-    
-    // Broadcast to other players in the lobby
-    socket.to(lobbyCode).emit('playerUpdate', {
-      id: socket.id,
-      ...data
-    });
-  });
-
-  socket.on('objectInteraction', (data) => {
-    if (!lobbyWorld) return;
-    
-    // Broadcast object interaction to all players in lobby
-    io.to(lobbyCode).emit('objectInteraction', {
-      id: socket.id,
-      ...data
-    });
-  });
-
-  socket.on('levelComplete', () => {
-    if (!lobbyWorld) return;
-    console.log(`Client ${socket.id} completed level ${lobbyWorld.currentLevel + 1}`);
-    
-    // Trigger level transition
-    lobbyWorld.gameState = 'levelComplete';
-    
-    // Load next level after a delay
-    setTimeout(() => {
-      if (lobbyWorld.gameState === 'levelComplete') {
-        lobbyWorld.gameState = 'transitioning';
-        lobbyWorld.loadLevel(lobbyWorld.currentLevel + 1);
-        
-        // Notify all clients about level change
-        io.to(lobbyCode).emit('levelChanged', {
-          currentLevel: lobbyWorld.currentLevel,
-          levelData: lobbyWorld.levelData,
-          gameState: lobbyWorld.gameState
-        });
+  ws.on('message', (message) => {
+    try {
+      // Convert Buffer to string and parse JSON
+      const messageString = message.toString('utf8');
+      const data = JSON.parse(messageString);
+      
+      // Handle different message types
+      switch (data.type) {
+        case 'joinPhysics':
+          lobbyCode = data.lobby;
+          lobbyWorld = getLobbyWorld(lobbyCode);
+          lobbyWorld.connections.add(ws);
+          playerId = ws._socket.remoteAddress + ':' + Date.now(); // Simple ID generation
+          ws.playerId = playerId;
+          
+          // Send join confirmation
+          ws.send(JSON.stringify({
+            type: 'joinedPhysics',
+            data: { clientSideOwnershipEnabled: true }
+          }));
+          
+          // Send current level info
+          ws.send(JSON.stringify({
+            type: 'levelInfo',
+            data: {
+              currentLevel: lobbyWorld.currentLevel,
+              levelData: lobbyWorld.levelData,
+              gameState: lobbyWorld.gameState
+            }
+          }));
+          
+          console.log(`Player ${playerId} joined lobby ${lobbyCode}`);
+          break;
+          
+        case 'playerUpdate':
+          if (!lobbyWorld) return;
+          
+          // Update player state
+          lobbyWorld.playerStates.set(playerId, data.data);
+          
+          // Broadcast to other players in the lobby
+          const playerUpdateMessage = JSON.stringify({
+            type: 'playerUpdate',
+            data: {
+              id: playerId,
+              ...data.data
+            }
+          });
+          
+          lobbyWorld.connections.forEach(connection => {
+            if (connection !== ws && connection.readyState === WebSocket.OPEN) {
+              connection.send(playerUpdateMessage);
+            }
+          });
+          break;
+          
+        case 'objectInteraction':
+          if (!lobbyWorld) return;
+          
+          // Broadcast object interaction to all players in lobby
+          const interactionMessage = JSON.stringify({
+            type: 'objectInteraction',
+            data: {
+              id: playerId,
+              ...data.data
+            }
+          });
+          
+          lobbyWorld.connections.forEach(connection => {
+            if (connection.readyState === WebSocket.OPEN) {
+              connection.send(interactionMessage);
+            }
+          });
+          break;
+          
+        case 'levelComplete':
+          if (!lobbyWorld) return;
+          console.log(`Client ${playerId} completed level ${lobbyWorld.currentLevel + 1}`);
+          
+          // Trigger level transition
+          lobbyWorld.gameState = 'levelComplete';
+          
+          // Load next level after a delay
+          setTimeout(() => {
+            if (lobbyWorld.gameState === 'levelComplete') {
+              lobbyWorld.gameState = 'transitioning';
+              lobbyWorld.loadLevel(lobbyWorld.currentLevel + 1);
+              
+              // Notify all clients about level change
+              const levelChangedMessage = JSON.stringify({
+                type: 'levelChanged',
+                data: {
+                  currentLevel: lobbyWorld.currentLevel,
+                  levelData: lobbyWorld.levelData,
+                  gameState: lobbyWorld.gameState
+                }
+              });
+              
+              lobbyWorld.connections.forEach(connection => {
+                if (connection.readyState === WebSocket.OPEN) {
+                  connection.send(levelChangedMessage);
+                }
+              });
+            }
+          }, 2000);
+          break;
+          
+        case 'skipLevel':
+          if (!lobbyWorld) return;
+          console.log(`Client ${playerId} requested to skip level ${lobbyWorld.currentLevel + 1}`);
+          
+          // Trigger level transition immediately
+          lobbyWorld.gameState = 'levelComplete';
+          
+          // Load next level after a short delay
+          setTimeout(() => {
+            if (lobbyWorld.gameState === 'levelComplete') {
+              lobbyWorld.gameState = 'transitioning';
+              lobbyWorld.loadLevel(lobbyWorld.currentLevel + 1);
+              
+              // Notify all clients about level change
+              const levelChangedMessage = JSON.stringify({
+                type: 'levelChanged',
+                data: {
+                  currentLevel: lobbyWorld.currentLevel,
+                  levelData: lobbyWorld.levelData,
+                  gameState: lobbyWorld.gameState
+                }
+              });
+              
+              lobbyWorld.connections.forEach(connection => {
+                if (connection.readyState === WebSocket.OPEN) {
+                  connection.send(levelChangedMessage);
+                }
+              });
+            }
+          }, 500);
+          break;
       }
-    }, 2000);
+    } catch (error) {
+      console.error('Error parsing message:', error);
+    }
   });
 
-  socket.on('skipLevel', () => {
-    if (!lobbyWorld) return;
-    console.log(`Client ${socket.id} requested to skip level ${lobbyWorld.currentLevel + 1}`);
-    
-    // Trigger level transition immediately
-    lobbyWorld.gameState = 'levelComplete';
-    
-    // Load next level after a short delay
-    setTimeout(() => {
-      if (lobbyWorld.gameState === 'levelComplete') {
-        lobbyWorld.gameState = 'transitioning';
-        lobbyWorld.loadLevel(lobbyWorld.currentLevel + 1);
-        
-        // Notify all clients about level change
-        io.to(lobbyCode).emit('levelChanged', {
-          currentLevel: lobbyWorld.currentLevel,
-          levelData: lobbyWorld.levelData,
-          gameState: lobbyWorld.gameState
-        });
-      }
-    }, 500);
-  });
-
-  socket.on('disconnect', () => {
+  ws.on('close', (code, reason) => {
     if (lobbyWorld) {
       // Remove player state
-      lobbyWorld.playerStates.delete(socket.id);
+      lobbyWorld.playerStates.delete(playerId);
       
-      lobbyWorld.sockets.delete(socket);
-      socket.to(lobbyCode).emit('playerDisconnected', { id: socket.id });
+      lobbyWorld.connections.delete(ws);
       
-      if (lobbyWorld.sockets.size === 0) {
+      // Notify other players about disconnection
+      const disconnectMessage = JSON.stringify({
+        type: 'playerDisconnected',
+        data: { id: playerId }
+      });
+      
+      lobbyWorld.connections.forEach(connection => {
+        if (connection.readyState === WebSocket.OPEN) {
+          connection.send(disconnectMessage);
+        }
+      });
+      
+      console.log(`Player ${playerId} disconnected from lobby ${lobbyCode}`);
+      
+      if (lobbyWorld.connections.size === 0) {
         // Clean up lobby world
         lobbies.delete(lobbyCode);
       }
@@ -196,7 +271,7 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/api/global-player-count', (req, res) => {
-  const count = globalLobby ? globalLobby.sockets.size : 0;
+  const count = globalLobby ? globalLobby.connections.size : 0;
   res.json({ count });
 });
 

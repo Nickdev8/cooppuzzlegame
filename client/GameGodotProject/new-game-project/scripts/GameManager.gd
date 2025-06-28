@@ -75,9 +75,6 @@ func _on_connected_to_server():
 	var status_label = get_node("../UI/ConnectionPanel/VBoxContainer/StatusLabel")
 	if status_label:
 		status_label.text = "Connected"
-	
-	# Join the lobby
-	network_manager.join_lobby()
 
 func _on_disconnected_from_server():
 	print("[GameManager] Disconnected from server")
@@ -121,7 +118,7 @@ func _on_level_changed(level_data: Dictionary):
 func _on_player_update_received(player_data: Dictionary):
 	var player_id = player_data.get("id", "")
 	print("[GameManager] Received player update for id=", player_id, ": ", player_data)
-	if player_id != "" and player_id != network_manager.player_id:
+	if player_id != "" and player_id != network_manager.get_tree().get_network_unique_id():
 		players[player_id] = player_data
 		_update_player_visual(player_id, player_data)
 	else:
@@ -129,7 +126,7 @@ func _on_player_update_received(player_data: Dictionary):
 
 func _on_object_interaction_received(interaction_data: Dictionary):
 	print("[GameManager] Object interaction received: ", interaction_data)
-	var player_id = interaction_data.get("playerId", "")
+	var player_id = interaction_data.get("id", "")
 	var object_id = interaction_data.get("objectId", "")
 	var interaction_type = interaction_data.get("type", "")
 	
@@ -404,13 +401,3 @@ func _handle_mouse_release(position: Vector2):
 				"position": {"x": position.x, "y": position.y}
 			})
 			break 
-
-func _process(_delta):
-	# Send player updates if connected
-	if network_manager.is_connected:
-		var mouse_pos = get_viewport().get_mouse_position()
-		network_manager.send_player_update({
-			"id": network_manager.player_id,
-			"x": mouse_pos.x,
-			"y": mouse_pos.y
-		}) 
