@@ -21,6 +21,7 @@ func _ready():
 	
 	# Listen for messages from parent window (only in web builds)
 	if OS.has_feature("web"):
+		print("[NetworkManager] Running in web build, setting up JavaScript communication")
 		# JavaScript.eval is only available in web exports
 		if Engine.has_singleton("JavaScript"):
 			var js = Engine.get_singleton("JavaScript")
@@ -28,9 +29,15 @@ func _ready():
 				window.addEventListener('message', function(event) {
 					if (event.data && event.data.type === 'LOBBY_INFO') {
 						window.godot_lobby_info = event.data;
+						console.log('Lobby info received by JavaScript:', event.data);
 					}
 				});
 			""")
+			print("[NetworkManager] JavaScript communication setup complete")
+		else:
+			print("[NetworkManager] JavaScript singleton not available")
+	else:
+		print("[NetworkManager] Not running in web build")
 	
 	# Connect UI signals
 	var connect_button = get_node("../UI/ConnectionPanel/VBoxContainer/ConnectButton")
@@ -55,13 +62,18 @@ func _check_for_lobby_info():
 		var lobby_info = js.eval("window.godot_lobby_info")
 		print("[NetworkManager] Checking for lobby info: ", lobby_info)
 		if lobby_info and lobby_info.has("lobbyCode"):
+			print("[NetworkManager] Found lobby info, processing...")
 			_lobby_info_received(lobby_info)
 		else:
+			print("[NetworkManager] No lobby info found yet, retrying in 0.5 seconds...")
 			# Try again after a short delay
 			await get_tree().create_timer(0.5).timeout
 			_check_for_lobby_info()
 	else:
 		print("[NetworkManager] Not in web build or JavaScript not available")
+		# Fallback: try to connect with default settings
+		print("[NetworkManager] Attempting connection with default settings...")
+		connect_to_server()
 
 func _lobby_info_received(info: Dictionary):
 	if lobby_info_received:
