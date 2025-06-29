@@ -1,493 +1,163 @@
-{
-  "gameConfig": {
-    "ballStartLocation": { "x": 100, "y": 500 },
-    "ballRadius": 15,
-    "ballMass": 1.0,
-    "ballRestitution": 0.6,
-    "ballFriction": 0.005,
-    "ballFrictionAir": 0.001,
-    "ballImage": "/images/ball.png",
-    "ballWidth": 30,
-    "ballHeight": 30,
-    "goalLocation": { "x": 1900, "y": 500 },
-    "goalRadius": 25,
-    "goalImage": "/images/goal.png",
-    "goalWidth": 50,
-    "goalHeight": 50,
-    "canvasWidth": 2048,
-    "canvasHeight": 1024
+[
+  {
+    "id": "ball1",
+    "type": "circle",
+    "radius": 20,
+    "width": 40,
+    "height": 40,
+    "mass": 1,
+    "restitution": 0.3,
+    "friction": 0.1,
+    "image": "/images/box.png",
+    "screen": {
+      "xPercent": 0.3,
+      "yPercent": 0.5
+    },
+    "offset": {
+      "x": 10, 
+      "y": 10
+    },
+    "fixedPoints": [
+      {
+        "offsetX": 30,
+        "offsetY": 0,
+        "stiffness": 0.95,
+        "damping": 0.9
+      },
+      {
+        "percentX": 0,
+        "percentY": 1,
+        "stiffness": 0.95,
+        "damping": 0.9
+      }
+    ]
   },
-  "levels": [
-    {
-      "id": "level1",
-      "name": "Simple Roll",
-      "description": "Roll the ball to the goal",
-      "ballStartLocation": { "x": 100, "y": 500 },
-      "goalLocation": { "x": 1900, "y": 500 },
-      "objects": [
-        {
-          "id": "wall1",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 400,
-          "y": 300,
-          "width": 200,
-          "height": 20,
-          "image": "/images/wall.png",
-          "description": "Simple wall obstacle"
-        },
-        {
-          "id": "wall2", 
-          "type": "static",
-          "shape": "rectangle",
-          "x": 800,
-          "y": 700,
-          "width": 200,
-          "height": 20,
-          "image": "/images/wall.png",
-          "description": "Another wall obstacle"
-        },
-        {
-          "id": "ramp1",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 1200,
-          "y": 600,
-          "width": 150,
-          "height": 20,
-          "angle": 0.3,
-          "image": "/images/ramp.png",
-          "description": "Ramp to jump over"
-        }
-      ],
-      "grabbableObjects": [
-        {
-          "id": "block1",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 600,
-          "y": 400,
-          "width": 60,
-          "height": 60,
-          "mass": 1,
-          "image": "/images/box.png",
-          "description": "Movable block",
-          "respawnLocation": { "x": 600, "y": 400 }
-        },
-        {
-          "id": "block2",
-          "type": "grabbable",
-          "shape": "rectangle", 
-          "x": 1000,
-          "y": 300,
-          "width": 60,
-          "height": 60,
-          "mass": 1,
-          "image": "/images/box.png",
-          "description": "Another movable block",
-          "respawnLocation": { "x": 1000, "y": 300 }
-        }
-      ]
-    },
-    {
-      "id": "level2", 
-      "name": "Pinball Flipper",
-      "description": "Use the flipper to launch the ball through the hoop",
-      "ballStartLocation": { "x": 150, "y": 800 },
-      "goalLocation": { "x": 1800, "y": 200 },
-      "objects": [
-        {
-          "id": "flipper",
-          "type": "flipper",
-          "shape": "rectangle",
-          "x": 300,
-          "y": 750,
-          "width": 120,
-          "height": 20,
-          "pivotPoint": { "x": 300, "y": 750 },
-          "maxAngle": 1.2,
-          "power": 0.8,
-          "image": "/images/flipper.png",
-          "description": "Pinball flipper to launch ball"
-        },
-        {
-          "id": "hoop",
-          "type": "hoop",
-          "shape": "circle",
-          "x": 1000,
-          "y": 400,
-          "radius": 40,
-          "image": "/images/hoop.png",
-          "description": "Hoop to pass through"
-        },
-        {
-          "id": "wall1",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 600,
-          "y": 200,
-          "width": 300,
-          "height": 20,
-          "image": "/images/wall.png",
-          "description": "Upper wall"
-        },
-        {
-          "id": "wall2",
-          "type": "static", 
-          "shape": "rectangle",
-          "x": 600,
-          "y": 600,
-          "width": 300,
-          "height": 20,
-          "image": "/images/wall.png",
-          "description": "Lower wall"
-        }
-      ],
-      "grabbableObjects": [
-        {
-          "id": "weight1",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 500,
-          "y": 650,
-          "width": 80,
-          "height": 80,
-          "mass": 2,
-          "image": "/images/weight.png",
-          "description": "Heavy weight to trigger flipper",
-          "respawnLocation": { "x": 500, "y": 650 }
-        }
-      ]
-    },
-    {
-      "id": "level3",
-      "name": "Cooperative Bridge",
-      "description": "Work together to build a bridge across the gap",
-      "ballStartLocation": { "x": 100, "y": 500 },
-      "goalLocation": { "x": 1900, "y": 500 },
-      "objects": [
-        {
-          "id": "gap",
-          "type": "gap",
-          "shape": "rectangle",
-          "x": 800,
-          "y": 400,
-          "width": 400,
-          "height": 200,
-          "image": "/images/gap.png",
-          "description": "Gap that needs bridging"
-        },
-        {
-          "id": "support1",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 700,
-          "y": 450,
-          "width": 50,
-          "height": 100,
-          "image": "/images/support.png",
-          "description": "Left support pillar"
-        },
-        {
-          "id": "support2",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 1300,
-          "y": 450,
-          "width": 50,
-          "height": 100,
-          "image": "/images/support.png",
-          "description": "Right support pillar"
-        }
-      ],
-      "grabbableObjects": [
-        {
-          "id": "plank1",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 400,
-          "y": 300,
-          "width": 120,
-          "height": 20,
-          "mass": 0.5,
-          "image": "/images/plank.png",
-          "description": "Bridge plank",
-          "respawnLocation": { "x": 400, "y": 300 }
-        },
-        {
-          "id": "plank2",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 400,
-          "y": 350,
-          "width": 120,
-          "height": 20,
-          "mass": 0.5,
-          "image": "/images/plank.png",
-          "description": "Bridge plank",
-          "respawnLocation": { "x": 400, "y": 350 }
-        },
-        {
-          "id": "plank3",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 400,
-          "y": 400,
-          "width": 120,
-          "height": 20,
-          "mass": 0.5,
-          "image": "/images/plank.png",
-          "description": "Bridge plank",
-          "respawnLocation": { "x": 400, "y": 400 }
-        }
-      ]
-    },
-    {
-      "id": "level4",
-      "name": "Synchronized Switches",
-      "description": "Activate both switches simultaneously to open the path",
-      "ballStartLocation": { "x": 100, "y": 500 },
-      "goalLocation": { "x": 1900, "y": 500 },
-      "objects": [
-        {
-          "id": "switch1",
-          "type": "switch",
-          "shape": "rectangle",
-          "x": 400,
-          "y": 300,
-          "width": 60,
-          "height": 20,
-          "image": "/images/switch.png",
-          "description": "First synchronized switch",
-          "switchId": "sync1"
-        },
-        {
-          "id": "switch2",
-          "type": "switch",
-          "shape": "rectangle",
-          "x": 400,
-          "y": 700,
-          "width": 60,
-          "height": 20,
-          "image": "/images/switch.png",
-          "description": "Second synchronized switch",
-          "switchId": "sync1"
-        },
-        {
-          "id": "gate",
-          "type": "gate",
-          "shape": "rectangle",
-          "x": 1000,
-          "y": 450,
-          "width": 40,
-          "height": 100,
-          "image": "/images/gate.png",
-          "description": "Gate that opens when switches are activated",
-          "requiredSwitches": ["sync1"]
-        },
-        {
-          "id": "wall1",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 600,
-          "y": 200,
-          "width": 200,
-          "height": 20,
-          "image": "/images/wall.png",
-          "description": "Upper wall"
-        },
-        {
-          "id": "wall2",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 600,
-          "y": 800,
-          "width": 200,
-          "height": 20,
-          "image": "/images/wall.png",
-          "description": "Lower wall"
-        }
-      ],
-      "grabbableObjects": [
-        {
-          "id": "weight1",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 300,
-          "y": 200,
-          "width": 60,
-          "height": 60,
-          "mass": 1,
-          "image": "/images/weight.png",
-          "description": "Weight for first switch",
-          "respawnLocation": { "x": 300, "y": 200 }
-        },
-        {
-          "id": "weight2",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 300,
-          "y": 600,
-          "width": 60,
-          "height": 60,
-          "mass": 1,
-          "image": "/images/weight.png",
-          "description": "Weight for second switch",
-          "respawnLocation": { "x": 300, "y": 600 }
-        }
-      ]
-    },
-    {
-      "id": "level5",
-      "name": "Balancing Act",
-      "description": "Balance the seesaw to launch the ball to the goal",
-      "ballStartLocation": { "x": 100, "y": 500 },
-      "goalLocation": { "x": 1900, "y": 300 },
-      "objects": [
-        {
-          "id": "seesaw",
-          "type": "seesaw",
-          "shape": "rectangle",
-          "x": 800,
-          "y": 500,
-          "width": 300,
-          "height": 20,
-          "pivotPoint": { "x": 800, "y": 500 },
-          "image": "/images/seesaw.png",
-          "description": "Balancing seesaw"
-        },
-        {
-          "id": "wall1",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 1200,
-          "y": 200,
-          "width": 200,
-          "height": 20,
-          "image": "/images/wall.png",
-          "description": "Upper wall"
-        },
-        {
-          "id": "wall2",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 1200,
-          "y": 800,
-          "width": 200,
-          "height": 20,
-          "image": "/images/wall.png",
-          "description": "Lower wall"
-        }
-      ],
-      "grabbableObjects": [
-        {
-          "id": "weight1",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 600,
-          "y": 400,
-          "width": 80,
-          "height": 80,
-          "mass": 2,
-          "image": "/images/weight.png",
-          "description": "Heavy weight to balance seesaw",
-          "respawnLocation": { "x": 600, "y": 400 }
-        },
-        {
-          "id": "weight2",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 600,
-          "y": 600,
-          "width": 80,
-          "height": 80,
-          "mass": 2,
-          "image": "/images/weight.png",
-          "description": "Another weight for balance",
-          "respawnLocation": { "x": 600, "y": 600 }
-        }
-      ]
-    },
-    {
-      "id": "level6",
-      "name": "Magnetic Maze",
-      "description": "Use magnetic blocks to guide the ball through the maze",
-      "ballStartLocation": { "x": 100, "y": 500 },
-      "goalLocation": { "x": 1900, "y": 500 },
-      "objects": [
-        {
-          "id": "maze1",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 400,
-          "y": 300,
-          "width": 800,
-          "height": 20,
-          "image": "/images/wall.png",
-          "description": "Maze wall"
-        },
-        {
-          "id": "maze2",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 400,
-          "y": 700,
-          "width": 800,
-          "height": 20,
-          "image": "/images/wall.png",
-          "description": "Maze wall"
-        },
-        {
-          "id": "maze3",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 600,
-          "y": 400,
-          "width": 20,
-          "height": 200,
-          "image": "/images/wall.png",
-          "description": "Maze wall"
-        },
-        {
-          "id": "maze4",
-          "type": "static",
-          "shape": "rectangle",
-          "x": 1000,
-          "y": 400,
-          "width": 20,
-          "height": 200,
-          "image": "/images/wall.png",
-          "description": "Maze wall"
-        }
-      ],
-      "grabbableObjects": [
-        {
-          "id": "magnet1",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 300,
-          "y": 400,
-          "width": 60,
-          "height": 60,
-          "mass": 1,
-          "image": "/images/magnet.png",
-          "description": "Magnetic block to guide ball",
-          "respawnLocation": { "x": 300, "y": 400 }
-        },
-        {
-          "id": "magnet2",
-          "type": "grabbable",
-          "shape": "rectangle",
-          "x": 300,
-          "y": 600,
-          "width": 60,
-          "height": 60,
-          "mass": 1,
-          "image": "/images/magnet.png",
-          "description": "Another magnetic block",
-          "respawnLocation": { "x": 300, "y": 600 }
-        }
-      ]
+  {
+    "id": "ball2",
+    "type": "circle",
+    "radius": 20,
+    "mass": 0.5,
+    "restitution": 0.9,
+    "friction": 0.05,
+    "image": "/images/ball.png",
+    "width": 40,
+    "height": 40,
+    "screen": {
+      "xPercent": 0.15,
+      "yPercent": 0.02
     }
-  ]
-}
+  },
+  {
+    "id": "ball3",
+    "type": "circle",
+    "radius": 20,
+    "mass": 0.5,
+    "restitution": 0.9,
+    "friction": 0.05,
+    "image": "/images/ball.png",
+    "width": 40,
+    "height": 40,
+    "screen": {
+      "xPercent": 0.2,
+      "yPercent": 0.02
+    }
+  },
+  {
+    "id": "ball4",
+    "type": "circle",
+    "radius": 20,
+    "mass": 0.5,
+    "restitution": 0.9,
+    "friction": 0.05,
+    "image": "/images/ball.png",
+    "width": 40,
+    "height": 40,
+    "screen": {
+      "xPercent": 0.25,
+      "yPercent": 0.02
+    }
+  },
+  {
+    "id": "ball5",
+    "type": "circle",
+    "radius": 20,
+    "mass": 0.5,
+    "restitution": 0.9,
+    "friction": 0.05,
+    "image": "/images/ball.png",
+    "width": 40,
+    "height": 40,
+    "screen": {
+      "xPercent": 0.3,
+      "yPercent": 0.02
+    }
+  },
+  {
+    "id": "box1",
+    "type": "rectangle",
+    "width": 60,
+    "height": 60,
+    "mass": 1,
+    "restitution": 0.3,
+    "friction": 0.1,
+    "image": "/images/box.png",
+    "screen": {
+      "xPercent": 0.4,
+      "yPercent": 0.03
+    }
+  },
+  {
+    "id": "panel1",
+    "type": "rectangle",
+    "width": 120,
+    "height": 80,
+    "mass": 2,
+    "restitution": 0.2,
+    "friction": 0.2,
+    "image": "/images/box.png",
+    "screen": {
+      "xPercent": 0.6,
+      "yPercent": 0.4
+    },
+    "fixedPoints": [
+      {
+        "percentX": 0.2,
+        "percentY": 0.2,
+        "stiffness": 0.95,
+        "damping": 0.9
+      },
+      {
+        "percentX": 0.8,
+        "percentY": 0.2,
+        "stiffness": 0.95,
+        "damping": 0.9
+      },
+      {
+        "percentX": 0.2,
+        "percentY": 0.8,
+        "stiffness": 0.95,
+        "damping": 0.9
+      },
+      {
+        "percentX": 0.8,
+        "percentY": 0.8,
+        "stiffness": 0.95,
+        "damping": 0.9
+      }
+    ]
+  },
+  {
+    "id": "panel2",
+    "type": "rectangle",
+    "width": 120,
+    "height": 80,
+    "mass": 2,
+    "restitution": 0.2,
+    "friction": 0.2,
+    "image": "/images/box.png",
+    "screen": {
+      "xPercent": 0.8,
+      "yPercent": 0.4
+    }
+  }
+]

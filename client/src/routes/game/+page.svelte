@@ -455,7 +455,11 @@
 			return;
 		}
 		ctx = canvas.getContext('2d')!;
-		socket = io(location.origin, { transports: ['websocket'], timeout: 10000 });
+		// Connect to the physics server on the correct port
+		const physicsUrl = window.location.hostname === 'localhost' 
+			? 'http://localhost:3080' 
+			: `${window.location.protocol}//${window.location.hostname}:3080`;
+		socket = io(physicsUrl, { transports: ['websocket'], timeout: 10000 });
 
 		socket.on('connect', () => {
 			const localId = socket.id!;
