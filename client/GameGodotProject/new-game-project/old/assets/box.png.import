@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://n67qet128fml"
-path="res://.godot/imported/cursor.svg-c91cd64049656d2add6f4a9dcd9d21c7.ctex"
+uid="uid://n1wmoqsgimk2"
+path="res://.godot/imported/box.png-e6dff4e11ffbeca79885de32f5ff4581.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/cursor.svg"
-dest_files=["res://.godot/imported/cursor.svg-c91cd64049656d2add6f4a9dcd9d21c7.ctex"]
+source_file="res://old/assets/box.png"
+dest_files=["res://.godot/imported/box.png-e6dff4e11ffbeca79885de32f5ff4581.ctex"]
 
 [params]
 
@@ -32,6 +32,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false
