@@ -115,7 +115,7 @@ io.on('connection', socket => {
     lobbyWorld = getLobbyWorld(lobbyCode);
     lobbyWorld.sockets.add(socket);
     socket.join(lobbyCode);
-    socket.emit('joinedPhysics', { clientSideOwnershipEnabled: false });
+    socket.emit('joinedPhysics');
   });
 
   socket.on('startDrag', ({ id, x, y }) => {

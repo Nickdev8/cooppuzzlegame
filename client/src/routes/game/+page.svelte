@@ -51,12 +51,6 @@
 	let lobbyCode: string | null = null;
 	let joinedPhysics = false;
 
-	// Client-side object ownership for better latency
-	let ownedObjects: Set<string> = new Set();
-	let localObjectPositions: Record<string, { x: number; y: number; angle: number }> = {};
-	// Always enable client-side ownership for smooth dragging
-	const clientSideOwnershipEnabled = true;
-
 	// Performance optimizations
 	let animationFrameId: number | null = null;
 	let lastDrawTime = 0;
@@ -109,27 +103,6 @@
 				safeEmit('mouseLeave');
 			}
 			if (dragging && dragId) {
-				// Always update local position immediately for owned objects for smooth dragging
-				if (ownedObjects.has(dragId)) {
-					const newX = x - dragOffset.x;
-					const newY = y - dragOffset.y;
-					// Preserve the initial rotation from when we started dragging
-					const initialAngle = localObjectPositions[dragId]?.angle || 0;
-					localObjectPositions[dragId] = { 
-						x: newX, 
-						y: newY, 
-						angle: initialAngle
-					};
-					// Update the object position for immediate visual feedback
-					if (objects[dragId]) {
-						objects[dragId].x = newX;
-						objects[dragId].y = newY;
-						// Keep the initial rotation
-						objects[dragId].angle = initialAngle;
-					}
-					// Trigger redraw for smooth dragging
-					requestAnimationFrame(() => draw());
-				}
 				safeEmit('drag', { x, y });
 			}
 		} catch (err) {
@@ -149,9 +122,6 @@
 				y: mouseVelocity.y * 0.3
 			};
 			
-			// Always release ownership of the object when dragging ends
-			ownedObjects.delete(dragId);
-			delete localObjectPositions[dragId];
 			safeEmit('endDrag', { velocity: throwVelocity });
 			dragging = false;
 			dragId = null;
@@ -190,11 +160,6 @@
 				// Calculate offset from mouse to object center
 				dragOffset.x = dx;
 				dragOffset.y = dy;
-				// Always take ownership of the object for smooth dragging
-				ownedObjects.add(id);
-				// Store the initial rotation to preserve it during dragging
-				const initialAngle = o.angle;
-				localObjectPositions[id] = { x: o.x, y: o.y, angle: initialAngle };
 				
 				// Initialize mouse tracking for throwing
 				lastMousePos = { x: mx, y: my };
@@ -206,10 +171,6 @@
 			}
 		}
 		if (!hit && dragging) {
-			if (dragId) {
-				ownedObjects.delete(dragId);
-				delete localObjectPositions[dragId];
-			}
 			safeEmit('endDrag');
 			dragging = false;
 			dragId = null;
@@ -320,7 +281,7 @@
 			socket.emit('joinPhysics', { lobby: lobbyCode });
 		});
 
-		socket.on('joinedPhysics', (data: { clientSideOwnershipEnabled: boolean }) => {
+		socket.on('joinedPhysics', () => {
 			joinedPhysics = true;
 		});
 
@@ -333,26 +294,9 @@
 
 		// update
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			// Always update all objects from server, but preserve client-side position for objects we're currently dragging
+			// Update all objects from server
 			payload.bodies.forEach((o) => {
-				if (objects[o.id]) {
-					// If we're currently dragging this object, keep our position and rotation
-					if (ownedObjects.has(o.id)) {
-						// Keep our local position and initial rotation - don't apply server rotation updates
-						const localPos = localObjectPositions[o.id];
-						if (localPos) {
-							objects[o.id].x = localPos.x;
-							objects[o.id].y = localPos.y;
-							objects[o.id].angle = localPos.angle; // Keep initial rotation
-						}
-					} else {
-						// Full update for non-dragged objects
-						objects[o.id] = o;
-					}
-				} else {
-					// New object - always use server state
-					objects[o.id] = o;
-				}
+				objects[o.id] = o;
 			});
 		});
 
