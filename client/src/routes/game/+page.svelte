@@ -461,6 +461,7 @@
 			const localId = socket.id!;
 			cursorHues[localId] = Math.floor(Math.random() * 360);
 			console.log('Local hue for', localId, ':', cursorHues[localId]);
+			console.log('🎮 [DEBUG] Connecting to lobby:', lobbyCode);
 			// Join the physics lobby
 			socket.emit('joinPhysics', { lobby: lobbyCode });
 		});
@@ -468,13 +469,26 @@
 		socket.on('joinedPhysics', (data: { clientSideOwnershipEnabled: boolean }) => {
 			joinedPhysics = true;
 			log('[joinedPhysics] Client-side ownership enabled:', data.clientSideOwnershipEnabled);
+			console.log('✅ [DEBUG] Successfully joined physics lobby:', lobbyCode);
 		});
 
-		socket.on('connect_error', (err) => console.error('[socket] connect_error:', err));
-		socket.on('disconnect', (reason) => console.warn('[socket] disconnect:', reason));
+		socket.on('connect_error', (err) => {
+			console.error('[socket] connect_error:', err);
+			console.error('🔥 [DEBUG] Failed to connect to physics server');
+		});
+		socket.on('disconnect', (reason) => {
+			console.warn('[socket] disconnect:', reason);
+			console.warn('❌ [DEBUG] Disconnected from physics server:', reason);
+		});
 
 		// update
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
+			console.log('📦 [DEBUG] Received state update:', {
+				bodiesCount: payload.bodies.length,
+				anchorsCount: payload.anchors.length,
+				bodies: payload.bodies.map(b => ({ id: b.id, x: b.x, y: b.y }))
+			});
+			
 			// Always update all objects from server, but preserve client-side position for objects we're currently dragging
 			payload.bodies.forEach((o) => {
 				if (objects[o.id]) {

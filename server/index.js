@@ -33,9 +33,11 @@ function clearExistingLobbies() {
 
 function createGlobalLobby() {
   if (!globalLobby) {
+    console.log('🌍 [DEBUG] Creating global lobby...');
     globalLobby = createLobbyWorld('GLOBAL');
     globalLobby.isGlobal = true;
     globalLobby.maxPlayers = Infinity; // Unlimited players
+    console.log('🌍 [DEBUG] Global lobby created with', globalLobby.bodies.length, 'objects');
   }
   return globalLobby;
 }
@@ -135,10 +137,12 @@ io.on('connection', socket => {
   let lobbyWorld = null;
 
   socket.on('joinPhysics', ({ lobby }) => {
+    console.log('🎮 [DEBUG] Client joining physics lobby:', lobby, 'socket ID:', socket.id);
     lobbyCode = lobby;
     lobbyWorld = getLobbyWorld(lobbyCode);
     lobbyWorld.sockets.add(socket);
     socket.join(lobbyCode);
+    console.log('🎮 [DEBUG] Client joined lobby:', lobby, 'total sockets:', lobbyWorld.sockets.size);
     socket.emit('joinedPhysics', { clientSideOwnershipEnabled: false });
   });
 
@@ -335,6 +339,15 @@ setInterval(() => {
         Body.setAngularVelocity(b, 0);
         Body.setAngle(b, 0);
       }
+    }
+    
+    // Debug: Log state updates occasionally
+    if (Math.random() < 0.01) { // 1% chance to log
+      console.log('🌍 [DEBUG] Global lobby state update:', {
+        bodiesCount: globalLobby.bodies.length,
+        anchorsCount: globalLobby.anchoredBodies.length,
+        socketsCount: globalLobby.sockets.size
+      });
     }
     
     io.to('GLOBAL').emit('state', {
