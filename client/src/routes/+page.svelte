@@ -1071,9 +1071,15 @@
       aria-labelledby="transfer-host-title"
       aria-describedby="transfer-host-description"
       on:click={cancelHostTransfer}
+      on:keydown={(e) => {
+        if (e.key === 'Escape') {
+          cancelHostTransfer();
+        }
+      }}
     >
       <div 
         class="popup-content" 
+        role="document"
         on:click|stopPropagation
       >
         <div class="popup-header">
@@ -1584,24 +1590,6 @@
     cursor: not-allowed;
   }
   
-  .physics-btn {
-    background: #9b59b6;
-    color: white;
-    border: none;
-    padding: 15px 30px;
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 1.1rem;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    margin-top: 10px;
-  }
-  
-  .physics-btn:hover {
-    background: #8e44ad;
-    transform: scale(1.05);
-  }
-  
   .decorative-elements {
     position: absolute;
     top: 0;
@@ -1609,50 +1597,6 @@
     right: 0;
     bottom: 0;
     pointer-events: none;
-  }
-  
-  .doodle {
-    position: absolute;
-    font-size: 2rem;
-    opacity: 0.1;
-    animation: float 3s ease-in-out infinite;
-    filter: grayscale(100%);
-  }
-  
-  .doodle-1 {
-    top: 20%;
-    right: 10%;
-    animation-delay: 0s;
-  }
-  
-  .doodle-2 {
-    bottom: 30%;
-    left: 5%;
-    animation-delay: 1s;
-  }
-  
-  .doodle-3 {
-    top: 60%;
-    right: 5%;
-    animation-delay: 2s;
-  }
-  
-  .doodle-4 {
-    top: 40%;
-    left: 10%;
-    animation-delay: 3s;
-  }
-  
-  .doodle-5 {
-    bottom: 10%;
-    right: 10%;
-    animation-delay: 4s;
-  }
-  
-  .doodle-6 {
-    top: 80%;
-    left: 20%;
-    animation-delay: 5s;
   }
   
   @keyframes float {
