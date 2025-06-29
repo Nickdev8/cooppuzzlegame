@@ -111,12 +111,10 @@ io.on('connection', socket => {
   let lobbyWorld = null;
 
   socket.on('joinPhysics', ({ lobby }) => {
-    console.log('🎮 [DEBUG] Client joining physics lobby:', lobby, 'socket ID:', socket.id);
     lobbyCode = lobby;
     lobbyWorld = getLobbyWorld(lobbyCode);
     lobbyWorld.sockets.add(socket);
     socket.join(lobbyCode);
-    console.log('🎮 [DEBUG] Client joined lobby:', lobby, 'total sockets:', lobbyWorld.sockets.size);
     socket.emit('joinedPhysics', { clientSideOwnershipEnabled: false });
   });
 
@@ -134,8 +132,6 @@ io.on('connection', socket => {
       offsetX: x - body.position.x,
       offsetY: y - body.position.y
     };
-    
-    console.log(`Client ${socket.id} started dragging object ${id} with initial angle ${initialAngle.toFixed(3)}`);
   });
 
   socket.on('drag', ({ x, y }) => {
@@ -164,18 +160,15 @@ io.on('connection', socket => {
           x: velocity.x * 0.01, // Scale down for less powerful throws
           y: velocity.y * 0.01 
         });
-        console.log(`[throw] Applied velocity to ${body.label}: (${velocity.x.toFixed(1)}, ${velocity.y.toFixed(1)})`);
       } else {
         // No velocity or zero velocity - just stop the object
         const body = socket.dragData.body;
         Body.setVelocity(body, { x: 0, y: 0 });
-        console.log(`[throw] No velocity applied to ${body.label}, stopped object`);
       }
       
       // Clear drag data
       socket.dragData = null;
     }
-    console.log(`Client ${socket.id} stopped dragging`);
   });
 
   socket.on('movemouse', pos => {
@@ -232,21 +225,15 @@ setInterval(() => {
     }
     
     io.to(lobbyCode).emit('state', {
-      bodies: lobbyWorld.bodies.map(({ body, renderHint }) => {
-        // Debug rotation occasionally
-        if (Math.random() < 0.01) { // 1% chance to log
-          console.log(`[server] Sending ${body.label}: angle=${body.angle.toFixed(3)}, pos=(${body.position.x.toFixed(1)}, ${body.position.y.toFixed(1)})`);
-        }
-        return {
-          id: body.label,
-          x: body.position.x,
-          y: body.position.y,
-          angle: body.angle,
-          image: renderHint.image,
-          width: renderHint.width,
-          height: renderHint.height
-        };
-      }),
+      bodies: lobbyWorld.bodies.map(({ body, renderHint }) => ({
+        id: body.label,
+        x: body.position.x,
+        y: body.position.y,
+        angle: body.angle,
+        image: renderHint.image,
+        width: renderHint.width,
+        height: renderHint.height
+      })),
       anchors: []
     });
   }
@@ -271,30 +258,16 @@ setInterval(() => {
       }
     }
     
-    // Debug: Log state updates occasionally
-    if (Math.random() < 0.01) { // 1% chance to log
-      console.log('🌍 [DEBUG] Global lobby state update:', {
-        bodiesCount: globalLobby.bodies.length,
-        socketsCount: globalLobby.sockets.size
-      });
-    }
-    
     io.to('GLOBAL').emit('state', {
-      bodies: globalLobby.bodies.map(({ body, renderHint }) => {
-        // Debug rotation occasionally
-        if (Math.random() < 0.01) { // 1% chance to log
-          console.log(`[server] Sending ${body.label}: angle=${body.angle.toFixed(3)}, pos=(${body.position.x.toFixed(1)}, ${body.position.y.toFixed(1)})`);
-        }
-        return {
-          id: body.label,
-          x: body.position.x,
-          y: body.position.y,
-          angle: body.angle,
-          image: renderHint.image,
-          width: renderHint.width,
-          height: renderHint.height
-        };
-      }),
+      bodies: globalLobby.bodies.map(({ body, renderHint }) => ({
+        id: body.label,
+        x: body.position.x,
+        y: body.position.y,
+        angle: body.angle,
+        image: renderHint.image,
+        width: renderHint.width,
+        height: renderHint.height
+      })),
       anchors: []
     });
   }

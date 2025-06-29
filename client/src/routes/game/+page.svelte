@@ -57,8 +57,15 @@
 	// Always enable client-side ownership for smooth dragging
 	const clientSideOwnershipEnabled = true;
 
-	const log = (...args: any[]) => console.log(...args);
-	// const log = (...args: any[]) => {};
+	// Performance optimizations
+	let animationFrameId: number | null = null;
+	let lastDrawTime = 0;
+	const TARGET_FPS = 60;
+	const FRAME_TIME = 1000 / TARGET_FPS;
+
+	// Disable excessive logging for better performance
+	const log = (...args: any[]) => {}; // Disable all logging
+	// const log = (...args: any[]) => console.log(...args); // Uncomment for debugging
 
 	function colorForId(id: string): string {
 		let hash = 0;
@@ -95,7 +102,6 @@
 		lastMousePos = { x, y };
 		lastMouseTime = currentTime;
 
-		log('handleWindowMousemove', { x, y, dragging, velocity: mouseVelocity });
 		try {
 			if (x >= 0 && y >= 0 && x <= canvas.width && y <= canvas.height) {
 				safeEmit('movemouse', { x, y });
@@ -121,7 +127,8 @@
 						// Keep the initial rotation
 						objects[dragId].angle = initialAngle;
 					}
-					draw(); // Redraw immediately for smooth dragging
+					// Trigger redraw for smooth dragging
+					requestAnimationFrame(() => draw());
 				}
 				safeEmit('drag', { x, y });
 			}
@@ -131,12 +138,10 @@
 	}
 
 	function handleWindowMouseleave(): void {
-		log('handleWindowMouseleave');
 		safeEmit('mouseLeave');
 	}
 
 	function handleWindowMouseup(): void {
-		log('handleWindowMouseup', { dragging, dragId, velocity: mouseVelocity });
 		if (dragging && dragId) {
 			// Calculate throw velocity (reduced power)
 			const throwVelocity = {
@@ -159,7 +164,6 @@
 
 	function handleCanvasMousedown(e: MouseEvent): void {
 		const { x: mx, y: my } = transformMouseToCanvas(e.clientX, e.clientY);
-		log('handleCanvasMousedown', { mx, my });
 		
 		let hit = false;
 		for (const id in objects) {
@@ -197,13 +201,11 @@
 				lastMouseTime = performance.now();
 				mouseVelocity = { x: 0, y: 0 };
 				
-				log('   • startDrag on', id, { mx, my, dragOffset, width: o.width, height: o.height, initialAngle });
 				safeEmit('startDrag', { id, x: mx, y: my });
 				break;
 			}
 		}
 		if (!hit && dragging) {
-			log('   • endDrag (missed hit)', { dragId });
 			if (dragId) {
 				ownedObjects.delete(dragId);
 				delete localObjectPositions[dragId];
@@ -217,27 +219,22 @@
 	function handleCanvasMousemove(e: MouseEvent): void {
 		if (!dragging) return;
 		const { x: mx, y: my } = transformMouseToCanvas(e.clientX, e.clientY);
-		log('handleCanvasMousemove (dragging)', { mx, my });
 		safeEmit('drag', { x: mx, y: my });
 	}
 
 	function draw(): void {
-		const t0 = performance.now();
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-		// Draw hand-drawn style background
-		drawHandDrawnBackground();
+		// Draw simple background
+		ctx.fillStyle = '#f8f6f0';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+		// Draw objects
 		for (const id in objects) {
 			const o = objects[id];
 			ctx.save();
 			ctx.translate(o.x, o.y);
 			ctx.rotate(o.angle);
-			
-			// Debug rotation occasionally
-			if (Math.random() < 0.01) { // 1% chance to log
-				log(`[draw] Rendering ${id} at (${o.x.toFixed(1)}, ${o.y.toFixed(1)}) with angle ${o.angle.toFixed(3)}`);
-			}
 			
 			if (o.image) {
 				let img = spriteCache[id];
@@ -246,34 +243,23 @@
 					img.src = o.image;
 					spriteCache[id] = img;
 					img.onload = () => {
-						log('[draw] Image loaded for', id);
-						draw();
+						requestAnimationFrame(draw);
 					};
 					img.onerror = (e) => console.error('[draw] Image load error for', id, e);
 				}
 				ctx.drawImage(img, -o.width / 2, -o.height / 2, o.width, o.height);
-				
-				// Debug: Draw hit detection area (uncomment to see hit areas)
-				// if (o.width && o.height) {
-				// 	ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-				// 	ctx.lineWidth = 2;
-				// 	ctx.strokeRect(-o.width / 2, -o.height / 2, o.width, o.height);
-				// }
 			} else {
-				// Draw hand-drawn style circle with rotation
-				drawHandDrawnCircle(0, 0, RADIUS, 'blue'); // Draw at origin since we already translated
-				
-				// Debug: Draw hit detection area for circles (uncomment to see hit areas)
-				// ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-				// ctx.lineWidth = 2;
-				// ctx.beginPath();
-				// ctx.arc(0, 0, RADIUS, 0, Math.PI * 2);
-				// ctx.stroke();
+				// Draw simple circle for better performance
+				ctx.fillStyle = 'blue';
+				ctx.beginPath();
+				ctx.arc(0, 0, RADIUS, 0, Math.PI * 2);
+				ctx.fill();
 			}
 			
 			ctx.restore();
 		}
 
+		// Draw cursors
 		for (const clientId in mousePositions) {
 			const pos = mousePositions[clientId]!;
 			const hue = cursorHues[clientId]!;
@@ -292,69 +278,11 @@
 
 		ctx.filter = 'none';
 
-		const t1 = performance.now();
-		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
-
-		log('[draw] done');
-	}
-
-	function drawHandDrawnBackground() {
-		// Create a subtle hand-drawn paper texture
-		ctx.fillStyle = '#f8f6f0';
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
-		
-		// Add some hand-drawn grid lines
-		ctx.strokeStyle = '#e8e4d8';
-		ctx.lineWidth = 1;
-		ctx.setLineDash([5, 5]);
-		
-		// Vertical lines
-		for (let x = 0; x < canvas.width; x += 100) {
-			ctx.beginPath();
-			ctx.moveTo(x + Math.random() * 2, 0);
-			ctx.lineTo(x + Math.random() * 2, canvas.height);
-			ctx.stroke();
-		}
-		
-		// Horizontal lines
-		for (let y = 0; y < canvas.height; y += 100) {
-			ctx.beginPath();
-			ctx.moveTo(0, y + Math.random() * 2);
-			ctx.lineTo(canvas.width, y + Math.random() * 2);
-			ctx.stroke();
-		}
-		
-		ctx.setLineDash([]);
-	}
-
-	function drawHandDrawnCircle(x: number, y: number, radius: number, color: string) {
-		ctx.strokeStyle = color;
-		ctx.fillStyle = color;
-		ctx.lineWidth = 2;
-		
-		// Draw a hand-drawn circle with slight imperfections
-		ctx.beginPath();
-		const segments = 16;
-		for (let i = 0; i <= segments; i++) {
-			const angle = (i / segments) * Math.PI * 2;
-			const r = radius + (Math.random() - 0.5) * 2; // Slight radius variation
-			const px = x + Math.cos(angle) * r;
-			const py = y + Math.sin(angle) * r;
-			
-			if (i === 0) {
-				ctx.moveTo(px, py);
-			} else {
-				ctx.lineTo(px, py);
-			}
-		}
-		ctx.closePath();
-		ctx.fill();
-		ctx.stroke();
+		// Schedule next frame
+		requestAnimationFrame(draw);
 	}
 
 	onMount(() => {
-		log('[onMount] initializing');
-
 		// Set canvas to 2:1 aspect ratio (2048x1024)
 		canvasWidth = 2048;
 		canvasHeight = 1024; // 2:1 ratio
@@ -362,16 +290,6 @@
 		canvas.height = canvasHeight;
 		canvas.style.width = '100%';
 		canvas.style.height = 'auto';
-
-		// Debug: Log canvas dimensions
-		setTimeout(() => {
-			const rect = canvas.getBoundingClientRect();
-			log('[onMount] Canvas dimensions:', {
-				internal: { width: canvas.width, height: canvas.height },
-				display: { width: rect.width, height: rect.height },
-				scale: { x: canvas.width / rect.width, y: canvas.height / rect.height }
-			});
-		}, 100);
 
 		// Extract lobby code from URL
 		const params = new URLSearchParams(window.location.search);
@@ -384,8 +302,8 @@
 		cursorImg = new Image();
 		cursorImg.src = '/images/cursor.svg';
 		cursorImg.onload = () => {
-			console.log('Cursor SVG loaded');
-			draw();
+			// Start the render loop
+			animationFrameId = requestAnimationFrame(draw);
 		};
 
 		if (!canvas) {
@@ -398,34 +316,23 @@
 		socket.on('connect', () => {
 			const localId = socket.id!;
 			cursorHues[localId] = Math.floor(Math.random() * 360);
-			console.log('Local hue for', localId, ':', cursorHues[localId]);
-			console.log('🎮 [DEBUG] Connecting to lobby:', lobbyCode);
 			// Join the physics lobby
 			socket.emit('joinPhysics', { lobby: lobbyCode });
 		});
 
 		socket.on('joinedPhysics', (data: { clientSideOwnershipEnabled: boolean }) => {
 			joinedPhysics = true;
-			log('[joinedPhysics] Client-side ownership enabled:', data.clientSideOwnershipEnabled);
-			console.log('✅ [DEBUG] Successfully joined physics lobby:', lobbyCode);
 		});
 
 		socket.on('connect_error', (err) => {
 			console.error('[socket] connect_error:', err);
-			console.error('🔥 [DEBUG] Failed to connect to physics server');
 		});
 		socket.on('disconnect', (reason) => {
 			console.warn('[socket] disconnect:', reason);
-			console.warn('❌ [DEBUG] Disconnected from physics server:', reason);
 		});
 
 		// update
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
-			console.log('📦 [DEBUG] Received state update:', {
-				bodiesCount: payload.bodies.length,
-				bodies: payload.bodies.map(b => ({ id: b.id, x: b.x, y: b.y }))
-			});
-			
 			// Always update all objects from server, but preserve client-side position for objects we're currently dragging
 			payload.bodies.forEach((o) => {
 				if (objects[o.id]) {
@@ -438,22 +345,15 @@
 							objects[o.id].y = localPos.y;
 							objects[o.id].angle = localPos.angle; // Keep initial rotation
 						}
-						log(`[state] Preserving local state for dragged ${o.id}: angle=${localPos?.angle.toFixed(3)}`);
 					} else {
 						// Full update for non-dragged objects
 						objects[o.id] = o;
-						log(`[state] Full update for ${o.id}: angle=${o.angle.toFixed(3)}`);
 					}
 				} else {
 					// New object - always use server state
 					objects[o.id] = o;
-					log(`[state] New object ${o.id}: angle=${o.angle.toFixed(3)}`);
 				}
 			});
-
-			log('Socket state received', payload);
-
-			draw();
 		});
 
 		socket.on('mouseMoved', (payload: { id: string; x: number; y: number }) => {
@@ -467,29 +367,25 @@
 
 			if (cursorHues[id] === undefined) {
 				cursorHues[id] = Math.floor(Math.random() * 360);
-				console.log('Assigned hue for', id, ':', cursorHues[id]);
 			}
 		});
 
 		socket.on('mouseRemoved', ({ id }: { id: string }) => {
-			log('[socket] mouseRemoved', id);
 			delete mousePositions[id];
 		});
 
 		window.addEventListener('mousemove', handleWindowMousemove);
 		window.addEventListener('mouseleave', handleWindowMouseleave);
 		window.addEventListener('mouseup', handleWindowMouseup);
-		
-		// Add resize handler to debug canvas dimensions
-		window.addEventListener('resize', handleResize);
 	});
 
 	onDestroy(() => {
-		log('[onDestroy] cleaning up');
 		window.removeEventListener('mousemove', handleWindowMousemove);
 		window.removeEventListener('mouseleave', handleWindowMouseleave);
 		window.removeEventListener('mouseup', handleWindowMouseup);
-		window.removeEventListener('resize', handleResize);
+		if (animationFrameId) {
+			cancelAnimationFrame(animationFrameId);
+		}
 		socket.disconnect();
 	});
 
@@ -498,19 +394,6 @@
 		if (joinedPhysics) {
 			socket.emit(event, data);
 		}
-	}
-
-	// Debug function for canvas dimensions
-	function handleResize() {
-		if (!canvas) return;
-		setTimeout(() => {
-			const rect = canvas.getBoundingClientRect();
-			log('[resize] Canvas dimensions:', {
-				internal: { width: canvas.width, height: canvas.height },
-				display: { width: rect.width, height: rect.height },
-				scale: { x: canvas.width / rect.width, y: canvas.height / rect.height }
-			});
-		}, 100);
 	}
 
 	// Coordinate transformation function to ensure consistent coordinates
@@ -527,17 +410,6 @@
 		// Clamp coordinates to canvas bounds
 		const clampedX = Math.max(0, Math.min(canvas.width, x));
 		const clampedY = Math.max(0, Math.min(canvas.height, y));
-		
-		// Debug coordinate transformation occasionally
-		if (Math.random() < 0.01) { // 1% chance to log
-			log('[transform] Mouse coordinates:', {
-				client: { x: clientX, y: clientY },
-				rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-				scale: { x: scaleX, y: scaleY },
-				transformed: { x: clampedX, y: clampedY },
-				canvas: { width: canvas.width, height: canvas.height }
-			});
-		}
 		
 		return { x: clampedX, y: clampedY };
 	}
