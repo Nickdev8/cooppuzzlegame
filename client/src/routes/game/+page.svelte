@@ -2,8 +2,6 @@
 	import { onMount, onDestroy } from 'svelte';
 	import io, { Socket } from 'socket.io-client';
 
-	let anchors: { x: number; y: number }[] = [];
-
 	interface BodyState {
 		id: string;
 		x: number;
@@ -12,7 +10,6 @@
 		width: number;
 		height: number;
 		image?: string;
-		hasAnchors?: boolean;
 	}
 
 	let canvas: HTMLCanvasElement;
@@ -164,18 +161,6 @@
 		const { x: mx, y: my } = transformMouseToCanvas(e.clientX, e.clientY);
 		log('handleCanvasMousedown', { mx, my });
 		
-		// Check if an anchor was clicked
-		for (let i = 0; i < anchors.length; i++) {
-			const anchor = anchors[i];
-			const dx = mx - anchor.x;
-			const dy = my - anchor.y;
-			if (dx * dx + dy * dy <= 100) { // 10px radius for screw clicking (matches the outer circle)
-				log('   • Screw clicked at index:', i, { x: anchor.x, y: anchor.y });
-				safeEmit('removeAnchor', { index: i, x: anchor.x, y: anchor.y });
-				return; // Don't check for object dragging if screw was clicked
-			}
-		}
-		
 		let hit = false;
 		for (const id in objects) {
 			const o = objects[id];
@@ -195,11 +180,6 @@
 			}
 			
 			if (isHit) {
-				// Check if object has anchors - if so, don't allow client-side dragging
-				if (o.hasAnchors) {
-					log('   • Object has anchors, cannot be dragged by client:', id);
-					continue;
-				}
 				hit = true;
 				dragging = true;
 				dragId = id;
@@ -315,48 +295,6 @@
 		const t1 = performance.now();
 		log(`[draw] rendered ${Object.keys(objects).length} objects in ${(t1 - t0).toFixed(1)}ms`);
 
-		// Draw hand-drawn style anchors (screws)
-		ctx.fillStyle = 'red';
-		for (const p of anchors) {
-			// Draw a screw-like anchor
-			ctx.save();
-			
-			// Screw head (outer circle)
-			ctx.strokeStyle = '#8B4513'; // Brown border
-			ctx.fillStyle = '#D2691E'; // Metallic brown
-			ctx.lineWidth = 2;
-			ctx.beginPath();
-			ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
-			ctx.fill();
-			ctx.stroke();
-			
-			// Screw head inner circle
-			ctx.fillStyle = '#CD853F'; // Lighter brown
-			ctx.beginPath();
-			ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
-			ctx.fill();
-			
-			// Cross pattern (screwdriver slot)
-			ctx.strokeStyle = '#654321'; // Dark brown
-			ctx.lineWidth = 2;
-			ctx.beginPath();
-			// Vertical line
-			ctx.moveTo(p.x, p.y - 4);
-			ctx.lineTo(p.x, p.y + 4);
-			// Horizontal line
-			ctx.moveTo(p.x - 4, p.y);
-			ctx.lineTo(p.x + 4, p.y);
-			ctx.stroke();
-			
-			// Center dot
-			ctx.fillStyle = '#654321';
-			ctx.beginPath();
-			ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
-			ctx.fill();
-			
-			ctx.restore();
-		}
-
 		log('[draw] done');
 	}
 
@@ -455,11 +393,7 @@
 			return;
 		}
 		ctx = canvas.getContext('2d')!;
-		// Connect to the physics server on the correct port
-		const physicsUrl = window.location.hostname === 'localhost' 
-			? 'http://localhost:3080' 
-			: `${window.location.protocol}//${window.location.hostname}:3080`;
-		socket = io(physicsUrl, { transports: ['websocket'], timeout: 10000 });
+		socket = io(location.origin, { transports: ['websocket'], timeout: 10000 });
 
 		socket.on('connect', () => {
 			const localId = socket.id!;
@@ -489,7 +423,6 @@
 		socket.on('state', (payload: { bodies: BodyState[]; anchors: { x: number; y: number }[] }) => {
 			console.log('📦 [DEBUG] Received state update:', {
 				bodiesCount: payload.bodies.length,
-				anchorsCount: payload.anchors.length,
 				bodies: payload.bodies.map(b => ({ id: b.id, x: b.x, y: b.y }))
 			});
 			
@@ -497,7 +430,7 @@
 			payload.bodies.forEach((o) => {
 				if (objects[o.id]) {
 					// If we're currently dragging this object, keep our position and rotation
-					if (ownedObjects.has(o.id) && !o.hasAnchors) {
+					if (ownedObjects.has(o.id)) {
 						// Keep our local position and initial rotation - don't apply server rotation updates
 						const localPos = localObjectPositions[o.id];
 						if (localPos) {
@@ -507,7 +440,7 @@
 						}
 						log(`[state] Preserving local state for dragged ${o.id}: angle=${localPos?.angle.toFixed(3)}`);
 					} else {
-						// Full update for non-dragged objects or objects with anchors
+						// Full update for non-dragged objects
 						objects[o.id] = o;
 						log(`[state] Full update for ${o.id}: angle=${o.angle.toFixed(3)}`);
 					}
@@ -518,7 +451,6 @@
 				}
 			});
 
-			anchors = payload.anchors;
 			log('Socket state received', payload);
 
 			draw();

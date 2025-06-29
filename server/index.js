@@ -6,7 +6,7 @@ const path = require('path');
 const { Server } = require('socket.io');
 const Matter = require('matter-js');
 
-const { Engine, World, Bodies, Body, Constraint } = Matter;
+const { Engine, World, Bodies, Body } = Matter;
 
 const app = express();
 app.use(cors());
@@ -19,7 +19,7 @@ const RESPAWN_MARGIN = 50;
 const SCENE_FILE = path.join(__dirname, 'scene.json');
 
 // ─── LOBBY PHYSICS SUPPORT ─────────────────────────────────────────────
-const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, interval, sockets: Set }
+const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, walls, canvasSize, interval, sockets: Set }
 
 // Global lobby for unlimited players
 let globalLobby = null;
@@ -51,7 +51,6 @@ function createLobbyWorld(lobbyCode) {
   const world = engine.world;
   let canvasSize = { width: 2048, height: 1024 }; // 2:1 aspect ratio
   let walls = { left: null, right: null, bottom: null };
-  let anchoredBodies = [];
   let bodies = [], DYNAMIC_BODIES = [];
 
   function recreateWalls() {
@@ -92,33 +91,8 @@ function createLobbyWorld(lobbyCode) {
     World.add(world, b);
     bodies.push({ body: b, renderHint: cfg });
     DYNAMIC_BODIES.push(b);
-    if (Array.isArray(cfg.fixedPoints)) {
-      const w = cfg.width ?? cfg.radius * 2;
-      const h = cfg.height ?? cfg.radius * 2;
-      for (const fp of cfg.fixedPoints) {
-        const localX = fp.offsetX != null ? fp.offsetX : (fp.percentX ?? 0) * w;
-        const localY = fp.offsetY != null ? fp.offsetY : (fp.percentY ?? 0) * h;
-        const halfW = w / 2;
-        const halfH = h / 2;
-        const worldX = baseX + (localX - halfW);
-        const worldY = baseY + (localY - halfH);
-        const C = Constraint.create({
-          pointA: { x: worldX, y: worldY },
-          bodyB: b,
-          pointB: { x: localX - halfW, y: localY - halfH },
-          length: 0,
-          stiffness: fp.stiffness ?? 0.9,
-          damping: fp.damping ?? 0.8,
-          render: {
-            visible: false
-          }
-        });
-        World.add(world, C);
-        anchoredBodies.push({ cfg, C, fp });
-      }
-    }
   }
-  return { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, sockets: new Set() };
+  return { engine, world, bodies, DYNAMIC_BODIES, walls, canvasSize, sockets: new Set() };
 }
 
 function getLobbyWorld(lobbyCode) {
@@ -150,12 +124,6 @@ io.on('connection', socket => {
     if (!lobbyWorld) return;
     const entry = lobbyWorld.bodies.find(o => o.renderHint.id === id);
     if (!entry) return;
-    
-    // Check if object has anchors - if so, don't allow dragging
-    if (Array.isArray(entry.renderHint.fixedPoints) && entry.renderHint.fixedPoints.length > 0) {
-      console.log('Client attempted to drag anchored object:', id);
-      return;
-    }
     
     // Store drag data for this client
     const body = entry.body;
@@ -208,43 +176,6 @@ io.on('connection', socket => {
       socket.dragData = null;
     }
     console.log(`Client ${socket.id} stopped dragging`);
-  });
-
-  socket.on('removeAnchor', ({ index, x, y }) => {
-    if (!lobbyWorld) return;
-    
-    // Find the anchor at the specified index
-    if (index >= 0 && index < lobbyWorld.anchoredBodies.length) {
-      const anchorData = lobbyWorld.anchoredBodies[index];
-      console.log('Removing anchor:', { index, x, y, objectId: anchorData.cfg.id });
-      
-      // Remove the constraint from the world
-      World.remove(lobbyWorld.world, anchorData.C);
-      
-      // Remove the anchor from the anchoredBodies array
-      lobbyWorld.anchoredBodies.splice(index, 1);
-      
-      // Update the object's hasAnchors property by removing the corresponding fixedPoint
-      const objectEntry = lobbyWorld.bodies.find(o => o.renderHint.id === anchorData.cfg.id);
-      if (objectEntry && Array.isArray(objectEntry.renderHint.fixedPoints)) {
-        // Find the fixed point that corresponds to this specific anchor
-        // We can match by comparing the anchor's fixed point data
-        const fixedPointIndex = objectEntry.renderHint.fixedPoints.findIndex(fp => {
-          // Match by comparing the fixed point properties
-          return fp.offsetX === anchorData.fp.offsetX && 
-                 fp.offsetY === anchorData.fp.offsetY &&
-                 fp.percentX === anchorData.fp.percentX &&
-                 fp.percentY === anchorData.fp.percentY;
-        });
-        
-        if (fixedPointIndex !== -1) {
-          objectEntry.renderHint.fixedPoints.splice(fixedPointIndex, 1);
-          console.log(`Removed fixed point ${fixedPointIndex} from object ${anchorData.cfg.id}`);
-        } else {
-          console.log(`Could not find matching fixed point for anchor ${index}`);
-        }
-      }
-    }
   });
 
   socket.on('movemouse', pos => {
@@ -313,11 +244,10 @@ setInterval(() => {
           angle: body.angle,
           image: renderHint.image,
           width: renderHint.width,
-          height: renderHint.height,
-          hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
+          height: renderHint.height
         };
       }),
-      anchors: lobbyWorld.anchoredBodies.map(({ C }) => C.pointA)
+      anchors: []
     });
   }
   
@@ -345,7 +275,6 @@ setInterval(() => {
     if (Math.random() < 0.01) { // 1% chance to log
       console.log('🌍 [DEBUG] Global lobby state update:', {
         bodiesCount: globalLobby.bodies.length,
-        anchorsCount: globalLobby.anchoredBodies.length,
         socketsCount: globalLobby.sockets.size
       });
     }
@@ -363,11 +292,10 @@ setInterval(() => {
           angle: body.angle,
           image: renderHint.image,
           width: renderHint.width,
-          height: renderHint.height,
-          hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
+          height: renderHint.height
         };
       }),
-      anchors: globalLobby.anchoredBodies.map(({ C }) => C.pointA)
+      anchors: []
     });
   }
 }, 1000 / 60);

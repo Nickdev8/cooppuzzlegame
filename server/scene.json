@@ -16,21 +16,7 @@
     "offset": {
       "x": 10, 
       "y": 10
-    },
-    "fixedPoints": [
-      {
-        "offsetX": 30,
-        "offsetY": 0,
-        "stiffness": 0.95,
-        "damping": 0.9
-      },
-      {
-        "percentX": 0,
-        "percentY": 1,
-        "stiffness": 0.95,
-        "damping": 0.9
-      }
-    ]
+    }
   },
   {
     "id": "ball2",
@@ -118,33 +104,7 @@
     "screen": {
       "xPercent": 0.6,
       "yPercent": 0.4
-    },
-    "fixedPoints": [
-      {
-        "percentX": 0.2,
-        "percentY": 0.2,
-        "stiffness": 0.95,
-        "damping": 0.9
-      },
-      {
-        "percentX": 0.8,
-        "percentY": 0.2,
-        "stiffness": 0.95,
-        "damping": 0.9
-      },
-      {
-        "percentX": 0.2,
-        "percentY": 0.8,
-        "stiffness": 0.95,
-        "damping": 0.9
-      },
-      {
-        "percentX": 0.8,
-        "percentY": 0.8,
-        "stiffness": 0.95,
-        "damping": 0.9
-      }
-    ]
+    }
   },
   {
     "id": "panel2",
