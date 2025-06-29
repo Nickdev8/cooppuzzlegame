@@ -4,6 +4,9 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const { Server } = require('socket.io');
+const Matter = require('matter-js');
+
+const { Engine, World, Bodies, Body, Constraint } = Matter;
 
 const app = express();
 app.use(cors());
@@ -11,18 +14,21 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
+const WALL_THICKNESS = 10;
+const RESPAWN_MARGIN = 50;
 const SCENE_FILE = path.join(__dirname, 'scene.json');
 
-// ─── LOBBY MANAGEMENT ─────────────────────────────────────────────
-const lobbies = new Map(); // lobbyCode -> { sockets: Set, currentLevel, gameState, levelData, playerStates }
+// ─── LOBBY PHYSICS SUPPORT ─────────────────────────────────────────────
+const lobbies = new Map(); // lobbyCode -> { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, interval, sockets: Set }
 
 // Global lobby for unlimited players
 let globalLobby = null;
 
+// Clear existing lobbies to ensure new canvas dimensions are used
 function clearExistingLobbies() {
   lobbies.clear();
   globalLobby = null;
-  console.log('Cleared existing lobbies');
+  console.log('Cleared existing lobbies to use new canvas dimensions (2048x1024)');
 }
 
 function createGlobalLobby() {
@@ -39,40 +45,78 @@ function getGlobalLobby() {
 }
 
 function createLobbyWorld(lobbyCode) {
-  let currentLevel = 0;
-  let gameState = 'playing'; // 'playing', 'levelComplete', 'transitioning', 'completed'
-  let levelData = null;
-  let playerStates = new Map(); // socketId -> { position, dragging, etc. }
+  const engine = Engine.create();
+  const world = engine.world;
+  let canvasSize = { width: 2048, height: 1024 }; // 2:1 aspect ratio
+  let walls = { left: null, right: null, bottom: null };
+  let anchoredBodies = [];
+  let bodies = [], DYNAMIC_BODIES = [];
 
-  function loadLevel(levelIndex) {
-    // Load scene data
-    const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
-    const levels = sceneData.levels;
-    
-    if (levelIndex >= levels.length) {
-      console.log('All levels completed!');
-      gameState = 'completed';
-      return;
-    }
-    
-    levelData = levels[levelIndex];
-    currentLevel = levelIndex;
-    gameState = 'playing';
-    
-    console.log(`Loading level ${levelIndex + 1}: ${levelData.name}`);
+  function recreateWalls() {
+    if (walls.left) World.remove(world, [walls.left, walls.right, walls.bottom]);
+    const { width, height } = canvasSize;
+    const h = height * 20;
+    walls.left = Bodies.rectangle(-WALL_THICKNESS / 2, height / 2, WALL_THICKNESS, h, { isStatic: true });
+    walls.right = Bodies.rectangle(width + WALL_THICKNESS / 2, height / 2, WALL_THICKNESS, h, { isStatic: true });
+    walls.bottom = Bodies.rectangle(width / 2, height + WALL_THICKNESS / 2, width + WALL_THICKNESS * 2, WALL_THICKNESS, { isStatic: true });
+    World.add(world, [walls.left, walls.right, walls.bottom]);
   }
-  
-  // Load first level
-  loadLevel(0);
-  
-  return { 
-    sockets: new Set(),
-    currentLevel,
-    gameState,
-    levelData,
-    playerStates,
-    loadLevel
-  };
+  recreateWalls();
+
+  const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
+  for (const cfg of sceneData) {
+    let baseX, baseY;
+    if (cfg.screen) {
+      baseX = canvasSize.width * (cfg.screen.xPercent ?? 0) + (cfg.offset?.x || 0);
+      baseY = canvasSize.height * (cfg.screen.yPercent ?? 0) + (cfg.offset?.y || 0);
+    } else {
+      baseX = cfg.x;
+      baseY = cfg.y;
+    }
+    const opts = {
+      mass: cfg.mass ?? 1,
+      restitution: cfg.restitution ?? 0.2,
+      friction: cfg.friction ?? 0.1
+    };
+    let b;
+    if (cfg.type === 'circle') {
+      b = Bodies.circle(baseX, baseY, cfg.radius, opts);
+    } else if (cfg.type === 'rectangle') {
+      b = Bodies.rectangle(baseX, baseY, cfg.width, cfg.height, opts);
+    } else {
+      continue;
+    }
+    b.label = cfg.id;
+    World.add(world, b);
+    bodies.push({ body: b, renderHint: cfg });
+    DYNAMIC_BODIES.push(b);
+    if (Array.isArray(cfg.fixedPoints)) {
+      const w = cfg.width ?? cfg.radius * 2;
+      const h = cfg.height ?? cfg.radius * 2;
+      for (const fp of cfg.fixedPoints) {
+        const localX = fp.offsetX != null ? fp.offsetX : (fp.percentX ?? 0) * w;
+        const localY = fp.offsetY != null ? fp.offsetY : (fp.percentY ?? 0) * h;
+        const halfW = w / 2;
+        const halfH = h / 2;
+        const worldX = baseX + (localX - halfW);
+        const worldY = baseY + (localY - halfH);
+        const C = Constraint.create({
+          pointA: { x: worldX, y: worldY },
+          bodyB: b,
+          pointB: { x: localX - halfW, y: localY - halfH },
+          length: 0,
+          stiffness: fp.stiffness ?? 0.9,
+          damping: fp.damping ?? 0.8,
+          render: {
+            visible: false
+          }
+        });
+        World.add(world, C);
+        anchoredBodies.push({ cfg, C, fp });
+      }
+    }
+  }
+  return { engine, world, bodies, DYNAMIC_BODIES, anchoredBodies, walls, canvasSize, sockets: new Set() };
 }
 
 function getLobbyWorld(lobbyCode) {
@@ -85,7 +129,7 @@ function getLobbyWorld(lobbyCode) {
   return lobbies.get(lobbyCode);
 }
 
-// ─── WEBRTC SIGNALING ─────────────────────────────────────────────────────────
+// ─── SOCKET.IO ─────────────────────────────────────────────────────────
 io.on('connection', socket => {
   let lobbyCode = null;
   let lobbyWorld = null;
@@ -95,111 +139,133 @@ io.on('connection', socket => {
     lobbyWorld = getLobbyWorld(lobbyCode);
     lobbyWorld.sockets.add(socket);
     socket.join(lobbyCode);
-    socket.emit('joinedPhysics', { clientSideOwnershipEnabled: true });
-    
-    // Send current level info
-    socket.emit('levelInfo', {
-      currentLevel: lobbyWorld.currentLevel,
-      levelData: lobbyWorld.levelData,
-      gameState: lobbyWorld.gameState
-    });
-    
-    // Send list of other players in the lobby for WebRTC connections
-    const otherPlayers = Array.from(lobbyWorld.sockets).filter(s => s.id !== socket.id);
-    socket.emit('playersInLobby', otherPlayers.map(s => s.id));
+    socket.emit('joinedPhysics', { clientSideOwnershipEnabled: false });
   });
 
-  // WebRTC signaling
-  socket.on('webrtc-offer', ({ to, offer }) => {
-    socket.to(to).emit('webrtc-offer', { from: socket.id, offer });
-  });
-
-  socket.on('webrtc-answer', ({ to, answer }) => {
-    socket.to(to).emit('webrtc-answer', { from: socket.id, answer });
-  });
-
-  socket.on('webrtc-ice-candidate', ({ to, candidate }) => {
-    socket.to(to).emit('webrtc-ice-candidate', { from: socket.id, candidate });
-  });
-
-  // Game state synchronization
-  socket.on('playerUpdate', (data) => {
+  socket.on('startDrag', ({ id, x, y }) => {
     if (!lobbyWorld) return;
+    const entry = lobbyWorld.bodies.find(o => o.renderHint.id === id);
+    if (!entry) return;
     
-    // Update player state
-    lobbyWorld.playerStates.set(socket.id, data);
+    // Check if object has anchors - if so, don't allow dragging
+    if (Array.isArray(entry.renderHint.fixedPoints) && entry.renderHint.fixedPoints.length > 0) {
+      console.log('Client attempted to drag anchored object:', id);
+      return;
+    }
     
-    // Broadcast to other players in the lobby via WebRTC
-    socket.to(lobbyCode).emit('playerUpdate', {
-      id: socket.id,
-      ...data
-    });
+    // Store drag data for this client
+    const body = entry.body;
+    const initialAngle = body.angle;
+    socket.dragData = {
+      body: body,
+      initialAngle: initialAngle,
+      offsetX: x - body.position.x,
+      offsetY: y - body.position.y
+    };
+    
+    console.log(`Client ${socket.id} started dragging object ${id} with initial angle ${initialAngle.toFixed(3)}`);
   });
 
-  socket.on('objectInteraction', (data) => {
+  socket.on('drag', ({ x, y }) => {
     if (!lobbyWorld) return;
-    
-    // Broadcast object interaction to all players in lobby
-    io.to(lobbyCode).emit('objectInteraction', {
-      id: socket.id,
-      ...data
-    });
+    if (socket.dragData) {
+      // Calculate new position based on mouse and stored offset
+      const newX = x - socket.dragData.offsetX;
+      const newY = y - socket.dragData.offsetY;
+      
+      // Directly set position and preserve initial rotation
+      Body.setPosition(socket.dragData.body, { x: newX, y: newY });
+      Body.setAngle(socket.dragData.body, socket.dragData.initialAngle);
+      Body.setAngularVelocity(socket.dragData.body, 0);
+      Body.setVelocity(socket.dragData.body, { x: 0, y: 0 });
+    }
   });
 
-  socket.on('levelComplete', () => {
+  socket.on('endDrag', ({ velocity }) => {
     if (!lobbyWorld) return;
-    console.log(`Client ${socket.id} completed level ${lobbyWorld.currentLevel + 1}`);
-    
-    // Trigger level transition
-    lobbyWorld.gameState = 'levelComplete';
-    
-    // Load next level after a delay
-    setTimeout(() => {
-      if (lobbyWorld.gameState === 'levelComplete') {
-        lobbyWorld.gameState = 'transitioning';
-        lobbyWorld.loadLevel(lobbyWorld.currentLevel + 1);
-        
-        // Notify all clients about level change
-        io.to(lobbyCode).emit('levelChanged', {
-          currentLevel: lobbyWorld.currentLevel,
-          levelData: lobbyWorld.levelData,
-          gameState: lobbyWorld.gameState
+    if (socket.dragData) {
+      // Apply throw velocity to the object
+      if (velocity && (velocity.x !== 0 || velocity.y !== 0)) {
+        const body = socket.dragData.body;
+        // Apply the throw velocity (convert from pixels/sec to Matter.js units)
+        Body.setVelocity(body, { 
+          x: velocity.x * 0.01, // Scale down for less powerful throws
+          y: velocity.y * 0.01 
         });
+        console.log(`[throw] Applied velocity to ${body.label}: (${velocity.x.toFixed(1)}, ${velocity.y.toFixed(1)})`);
+      } else {
+        // No velocity or zero velocity - just stop the object
+        const body = socket.dragData.body;
+        Body.setVelocity(body, { x: 0, y: 0 });
+        console.log(`[throw] No velocity applied to ${body.label}, stopped object`);
       }
-    }, 2000);
+      
+      // Clear drag data
+      socket.dragData = null;
+    }
+    console.log(`Client ${socket.id} stopped dragging`);
   });
 
-  socket.on('skipLevel', () => {
+  socket.on('removeAnchor', ({ index, x, y }) => {
     if (!lobbyWorld) return;
-    console.log(`Client ${socket.id} requested to skip level ${lobbyWorld.currentLevel + 1}`);
     
-    // Trigger level transition immediately
-    lobbyWorld.gameState = 'levelComplete';
-    
-    // Load next level after a short delay
-    setTimeout(() => {
-      if (lobbyWorld.gameState === 'levelComplete') {
-        lobbyWorld.gameState = 'transitioning';
-        lobbyWorld.loadLevel(lobbyWorld.currentLevel + 1);
-        
-        // Notify all clients about level change
-        io.to(lobbyCode).emit('levelChanged', {
-          currentLevel: lobbyWorld.currentLevel,
-          levelData: lobbyWorld.levelData,
-          gameState: lobbyWorld.gameState
+    // Find the anchor at the specified index
+    if (index >= 0 && index < lobbyWorld.anchoredBodies.length) {
+      const anchorData = lobbyWorld.anchoredBodies[index];
+      console.log('Removing anchor:', { index, x, y, objectId: anchorData.cfg.id });
+      
+      // Remove the constraint from the world
+      World.remove(lobbyWorld.world, anchorData.C);
+      
+      // Remove the anchor from the anchoredBodies array
+      lobbyWorld.anchoredBodies.splice(index, 1);
+      
+      // Update the object's hasAnchors property by removing the corresponding fixedPoint
+      const objectEntry = lobbyWorld.bodies.find(o => o.renderHint.id === anchorData.cfg.id);
+      if (objectEntry && Array.isArray(objectEntry.renderHint.fixedPoints)) {
+        // Find the fixed point that corresponds to this specific anchor
+        // We can match by comparing the anchor's fixed point data
+        const fixedPointIndex = objectEntry.renderHint.fixedPoints.findIndex(fp => {
+          // Match by comparing the fixed point properties
+          return fp.offsetX === anchorData.fp.offsetX && 
+                 fp.offsetY === anchorData.fp.offsetY &&
+                 fp.percentX === anchorData.fp.percentX &&
+                 fp.percentY === anchorData.fp.percentY;
         });
+        
+        if (fixedPointIndex !== -1) {
+          objectEntry.renderHint.fixedPoints.splice(fixedPointIndex, 1);
+          console.log(`Removed fixed point ${fixedPointIndex} from object ${anchorData.cfg.id}`);
+        } else {
+          console.log(`Could not find matching fixed point for anchor ${index}`);
+        }
       }
-    }, 500);
+    }
+  });
+
+  socket.on('movemouse', pos => {
+    if (!lobbyWorld) return;
+    socket.to(lobbyCode).emit('mouseMoved', {
+      id: socket.id,
+      x: pos.x,
+      y: pos.y
+    });
+  });
+
+  socket.on('mouseLeave', () => {
+    if (!lobbyWorld) return;
+    socket.to(lobbyCode).emit('mouseRemoved', { id: socket.id });
   });
 
   socket.on('disconnect', () => {
     if (lobbyWorld) {
-      // Remove player state
-      lobbyWorld.playerStates.delete(socket.id);
+      // Clean up any drag data
+      if (socket.dragData) {
+        socket.dragData = null;
+      }
       
       lobbyWorld.sockets.delete(socket);
-      socket.to(lobbyCode).emit('playerDisconnected', { id: socket.id });
-      
+      socket.to(lobbyCode).emit('mouseRemoved', { id: socket.id });
       if (lobbyWorld.sockets.size === 0) {
         // Clean up lobby world
         lobbies.delete(lobbyCode);
@@ -207,6 +273,91 @@ io.on('connection', socket => {
     }
   });
 });
+
+// ─── PHYSICS UPDATE LOOP ───────────────────────────────────────────────
+setInterval(() => {
+  // Update regular lobbies
+  for (const [lobbyCode, lobbyWorld] of lobbies.entries()) {
+    // Run physics simulation on all objects
+    Engine.update(lobbyWorld.engine, 1000 / 60);
+    
+    const floorY = lobbyWorld.canvasSize.height + WALL_THICKNESS / 2;
+    
+    for (const b of lobbyWorld.DYNAMIC_BODIES) {
+      // Respawn objects that fall below screen
+      if (b.position.y > floorY + RESPAWN_MARGIN) {
+        // Respawn at 15% from left, 2% from top of canvas
+        const respawnX = lobbyWorld.canvasSize.width * 0.15;
+        const respawnY = lobbyWorld.canvasSize.height * 0.02;
+        Body.setPosition(b, { x: respawnX, y: respawnY });
+        Body.setVelocity(b, { x: 0, y: 0 });
+        Body.setAngularVelocity(b, 0);
+        Body.setAngle(b, 0);
+      }
+    }
+    
+    io.to(lobbyCode).emit('state', {
+      bodies: lobbyWorld.bodies.map(({ body, renderHint }) => {
+        // Debug rotation occasionally
+        if (Math.random() < 0.01) { // 1% chance to log
+          console.log(`[server] Sending ${body.label}: angle=${body.angle.toFixed(3)}, pos=(${body.position.x.toFixed(1)}, ${body.position.y.toFixed(1)})`);
+        }
+        return {
+          id: body.label,
+          x: body.position.x,
+          y: body.position.y,
+          angle: body.angle,
+          image: renderHint.image,
+          width: renderHint.width,
+          height: renderHint.height,
+          hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
+        };
+      }),
+      anchors: lobbyWorld.anchoredBodies.map(({ C }) => C.pointA)
+    });
+  }
+  
+  // Update global lobby
+  if (globalLobby) {
+    // Run physics simulation on all objects
+    Engine.update(globalLobby.engine, 1000 / 60);
+    
+    const floorY = globalLobby.canvasSize.height + WALL_THICKNESS / 2;
+    
+    for (const b of globalLobby.DYNAMIC_BODIES) {
+      // Respawn objects that fall below screen
+      if (b.position.y > floorY + RESPAWN_MARGIN) {
+        // Respawn at 15% from left, 2% from top of canvas
+        const respawnX = globalLobby.canvasSize.width * 0.15;
+        const respawnY = globalLobby.canvasSize.height * 0.02;
+        Body.setPosition(b, { x: respawnX, y: respawnY });
+        Body.setVelocity(b, { x: 0, y: 0 });
+        Body.setAngularVelocity(b, 0);
+        Body.setAngle(b, 0);
+      }
+    }
+    
+    io.to('GLOBAL').emit('state', {
+      bodies: globalLobby.bodies.map(({ body, renderHint }) => {
+        // Debug rotation occasionally
+        if (Math.random() < 0.01) { // 1% chance to log
+          console.log(`[server] Sending ${body.label}: angle=${body.angle.toFixed(3)}, pos=(${body.position.x.toFixed(1)}, ${body.position.y.toFixed(1)})`);
+        }
+        return {
+          id: body.label,
+          x: body.position.x,
+          y: body.position.y,
+          angle: body.angle,
+          image: renderHint.image,
+          width: renderHint.width,
+          height: renderHint.height,
+          hasAnchors: Array.isArray(renderHint.fixedPoints) && renderHint.fixedPoints.length > 0
+        };
+      }),
+      anchors: globalLobby.anchoredBodies.map(({ C }) => C.pointA)
+    });
+  }
+}, 1000 / 60);
 
 // ─── HTTP ROUTES ─────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
@@ -218,16 +369,7 @@ app.get('/api/global-player-count', (req, res) => {
   res.json({ count });
 });
 
-app.get('/api/levels', (req, res) => {
-  try {
-    const sceneData = JSON.parse(fs.readFileSync(SCENE_FILE, 'utf-8'));
-    res.json({ levels: sceneData.levels });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to load levels' });
-  }
-});
-
 server.listen(3080, () => {
-  console.log('Godot Game Server running on https://iotservice.nl:3080');
-  clearExistingLobbies();
+  console.log('Server on https://iotservice.nl:3080');
+  clearExistingLobbies(); // Clear existing lobbies to use new canvas dimensions
 });
