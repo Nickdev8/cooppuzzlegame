@@ -8,6 +8,8 @@ echo "Pushing to remote..."
 
 ssh nick@hackclub.app 'bash -s' <<'ENDSSH'
 
+echo "Connected to remote server. Deploying..."
+
 cd cooppuzzlegame/
 
 git pull origin main
