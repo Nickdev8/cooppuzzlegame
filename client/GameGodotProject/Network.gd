@@ -2,90 +2,90 @@ extends Node
 
 signal game_started
 
-const MAX_PEER_COUNT = 4
-
-var port_number: int = 18818
-var target_peer_count: int = 4
-var ip_address: String = "127.0.0.1"
+const PORT_NUMBER := 18818
+const MAX_PEERS := 16
 
 var peer := ENetMultiplayerPeer.new()
 var player_info: Dictionary = {}
-var is_server: bool = false
-var connection_count: int = 0
-var upnp: UPNP = UPNP.new()
-var player_name: String = "Player"
+var lobbies: Dictionary = {}      # lobby_code → [peer_id]
+var is_server := false
+var is_connected := false
+
+var player_id: int = 0
 
 func _ready():
-	if OS.has_feature("server") or OS.get_name() == "Server":
-		print("Running in headless server mode")
-		host_game()
+	_connect_signals()
+	if OS.has_feature("server"):
+		is_server = true
+		player_id = 0
+		peer.create_server(PORT_NUMBER, MAX_PEERS)
+		multiplayer.multiplayer_peer = peer
+		print("Server running on port", PORT_NUMBER)
+	else:
+		peer.create_client("127.0.0.1", PORT_NUMBER)
+		multiplayer.multiplayer_peer = peer
+		print("Client connecting…")
 
-func _connect_signals() -> void:
+func _connect_signals():
 	multiplayer.peer_connected.connect(_on_player_connected)
 	multiplayer.peer_disconnected.connect(_on_player_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_ok)
 	multiplayer.connection_failed.connect(_on_connected_fail)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
-func host_game(host_online := false) -> void:
-	is_server = true
-	peer.create_server(port_number, MAX_PEER_COUNT)
-	multiplayer.multiplayer_peer = peer
-	print_debug("Server started on port %d" % port_number)
-	
-	if host_online:
-		set_up_upnp()
+#── SERVER RPC: join or create lobby by code ──#
+@rpc("authority")
+func join_lobby(code: String) -> void:
+	var pid = multiplayer.get_remote_sender_id()
+	if not lobbies.has(code):
+		lobbies[code] = []
+	if pid not in lobbies[code]:
+		lobbies[code].append(pid)
+	_broadcast_lobby_update(code)
 
-func set_up_upnp() -> void:
-	upnp.discover()
-	if upnp.get_gateway() and upnp.get_gateway().is_valid_gateway():
-		var result = upnp.add_port_mapping(port_number, port_number, ProjectSettings.get_setting("application/config/name"), "UDP")
-		if result == OK:
-			print("UPNP port forwarding successful")
-		else:
-			print("UPNP port forwarding failed")
+func _broadcast_lobby_update(code: String) -> void:
+	var members = lobbies[code]
+	for pid in members:
+		rpc_id(pid, "update_lobby_list", code, members)
 
-func join_game() -> void:
-	is_server = false
-	peer.create_client(ip_address, port_number)
-	multiplayer.multiplayer_peer = peer
-	print_debug("Client connecting to %s:%d" % [ip_address, port_number])
-
+#── CLIENT RPC: receive updated member list ──#
 @rpc("any_peer")
-func register_player(player_information: Dictionary) -> void:
-	var peer_id = multiplayer.get_remote_sender_id()
-	player_info[peer_id] = player_information
-	print_debug("Registered player: %s" % player_information)
+func update_lobby_list(code: String, members: Array) -> void:
+	print("Lobby '%s' now has peers: %s" % [code, members])
 
-func start_game() -> void:
+#── CONNECTION SIGNALS ──#
+func _on_player_connected(pid: int) -> void:
 	if is_server:
-		rpc("client_start_game")
-		emit_signal("game_started")
+		# register basic info
+		player_info[pid] = {"name": "Player_%d" % pid}
+		rpc_id(pid, "register_player", player_info[pid])
+		print("Player %d joined; sent registration" % pid)
 
-@rpc("any_peer")
-func client_start_game() -> void:
-	emit_signal("game_started")
+func _on_player_disconnected(pid: int) -> void:
+	# remove from all lobbies, broadcast updates
+	for code in lobbies.keys():
+		if pid in lobbies[code]:
+			lobbies[code].erase(pid)
+			_broadcast_lobby_update(code)
+	player_info.erase(pid)
+	print("Player %d disconnected" % pid)
 
-func _on_player_connected(player_id: int) -> void:
-	print_debug("player " +  str(player_id) + " joined")
-	if is_server:
-		connection_count += 1
-		var info = {"player_name": "Player_%d" % player_id}
-		player_info[player_id] = info
-		rpc_id(player_id, "register_player", info)
-
-		if connection_count >= target_peer_count:
-			start_game()
-
-func _on_player_disconnected(player_id: int) -> void:
-	print_debug("Player disconnected: %d" % player_id)
-	player_info.erase(player_id)
-
-func _on_connected_ok() -> void:
-	print_debug("Successfully connected to server")
+func _on_connected_ok(remote_id: int) -> void:
+	is_connected = true
+	player_id = multiplayer.get_unique_id()
+	print("Connected as ID", player_id)
 
 func _on_connected_fail() -> void:
-	print_debug("Failed to connect to server")
+	is_connected = false
+	print("Connection failed")
 
 func _on_server_disconnected() -> void:
-	print_debug("Disconnected from server")
+	is_connected = false
+	print("Server disconnected")
+
+#── OPTIONAL: register self info ──#
+@rpc("any_peer")
+func register_player(info: Dictionary) -> void:
+	var pid = multiplayer.get_remote_sender_id()
+	player_info[pid] = info
+	print("Registered player %d info: %s" % [pid, info])

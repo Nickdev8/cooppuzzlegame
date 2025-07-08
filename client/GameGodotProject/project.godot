@@ -10,7 +10,8 @@ config_version=5
 
 [application]
 
-config/name="New Game Project"
+config/name="CoOpgames"
+run/main_scene="uid://ynux0vo3b1yh"
 config/features=PackedStringArray("4.4", "GL Compatibility")
 config/icon="res://icon.svg"
 
