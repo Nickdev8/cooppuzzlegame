@@ -16,15 +16,18 @@ var player_id: int = 0
 func _ready():
 	_connect_signals()
 	if OS.has_feature("server"):
+		# Running as a dedicated server (e.g. via `--server` flag)
 		is_server = true
 		player_id = 0
 		peer.create_server(PORT_NUMBER, MAX_PEERS)
 		multiplayer.multiplayer_peer = peer
-		print("Server running on port", PORT_NUMBER)
+		print("Server running on port %d" % PORT_NUMBER)
 	else:
-		peer.create_client("127.0.0.1", PORT_NUMBER)
+		# Client will now connect to nick.hackclub.app
+		var server_address := "nick.hackclub.app"
+		peer.create_client(server_address, PORT_NUMBER)
 		multiplayer.multiplayer_peer = peer
-		print("Client connecting…")
+		print("Client connecting to %s:%d…" % [server_address, PORT_NUMBER])
 
 func _connect_signals():
 	multiplayer.peer_connected.connect(_on_player_connected)
@@ -73,7 +76,7 @@ func _on_player_disconnected(pid: int) -> void:
 func _on_connected_ok(remote_id: int) -> void:
 	is_connected = true
 	player_id = multiplayer.get_unique_id()
-	print("Connected as ID", player_id)
+	print("Connected as ID %d" % player_id)
 
 func _on_connected_fail() -> void:
 	is_connected = false
