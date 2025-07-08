@@ -14,11 +14,9 @@ cd cooppuzzlegame/
 
 git pull origin main
 
-cp -R client/serverbuild/ ~/server
+cp -R build/sever/ ~/server/
 
 echo "[RUN] Starting headless server…"
   ~/server/server.x86_64 --headless --main-pack ~/server/server.pck
 
-
 ENDSSH
-
