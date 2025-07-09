@@ -4,36 +4,40 @@ signal game_started
 const PORT_NUMBER := 18818
 const MAX_PEERS := 16
 
-var multiplayer_peer: MultiplayerPeer
+var multiplayer_peer: WebSocketMultiplayerPeer
 var is_server := false
 var is_connected := false
 var player_id := -1
-var player_info: Dictionary = {}  # keep track of joined players
+var player_info := {}  # track joined players
 
-func _ready():
+func _ready() -> void:
 	_connect_signals()
+	multiplayer_peer = WebSocketMultiplayerPeer.new()
 
 	if OS.has_feature("server"):
-		# SERVER
+		# ─── SERVER ──────────────────────────────────
 		is_server = true
 		player_id = 0
-		multiplayer_peer = ENetMultiplayerPeer.new()
-		multiplayer_peer.create_server(PORT_NUMBER, MAX_PEERS)
-		print("Server running on port %d" % PORT_NUMBER)
+		# 1) Load key & cert
+		var server_key = load("res://ssl/privkey.pem")
+		var server_cert = load("res://ssl/fullchain.pem")
+		# 2) Build TLSOptions
+		var tls_opts = TLSOptions.server(server_key, server_cert)
+		# 3) Start WSS server
+		multiplayer_peer.create_server(PORT_NUMBER, "*", tls_opts)
+		print("WSS server listening on port %d" % PORT_NUMBER)
 	else:
-		# CLIENT (HTML5 → WebSocket; desktop → ENet)
-		if OS.has_feature("html5"):
-			multiplayer_peer = WebSocketMultiplayerPeer.new()
-			await multiplayer_peer.create_client("wss://nick.hackclub.app:%d" % PORT_NUMBER)
-		else:
-			multiplayer_peer = ENetMultiplayerPeer.new()
-			multiplayer_peer.create_client("nick.hackclub.app", PORT_NUMBER)
-			
-		print("Client connecting to %s:%d…" % ["nick.hackclub.app", PORT_NUMBER])
+		# ─── CLIENT ──────────────────────────────────
+		# Pick ws vs wss
+		var scheme = "wss" if OS.has_feature("html5") else "ws"
+		var url = "%s://nick.hackclub.app:%d" % [scheme, PORT_NUMBER]
+		# Connect (await works without needing an `async` keyword)
+		await multiplayer_peer.create_client(url)
+		print("Client connecting to %s" % url)
 
 	multiplayer.multiplayer_peer = multiplayer_peer
 
-func _connect_signals():
+func _connect_signals() -> void:
 	multiplayer.peer_connected.connect(_on_player_connected)
 	multiplayer.peer_disconnected.connect(_on_player_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_ok)
@@ -42,15 +46,12 @@ func _connect_signals():
 
 func _on_player_connected(pid: int) -> void:
 	if is_server:
-		# server-side registration
 		player_info[pid] = {"name": "Player_%d" % pid}
 		rpc_id(pid, "register_player", player_info[pid])
 		print("Player %d joined; sent registration" % pid)
-		# broadcast a "player joined" notice to everyone
 		rpc("player_joined", pid)
 
 func _on_player_disconnected(pid: int) -> void:
-	# simply remove from our registry and notify
 	player_info.erase(pid)
 	print("Player %d disconnected" % pid)
 	rpc("player_left", pid)
@@ -68,14 +69,12 @@ func _on_server_disconnected() -> void:
 	is_connected = false
 	print("Server disconnected")
 
-#── OPTIONAL: register self info ──#
 @rpc("any_peer")
 func register_player(info: Dictionary) -> void:
 	var pid = multiplayer.get_remote_sender_id()
 	player_info[pid] = info
 	print("Registered player %d info: %s" % [pid, info])
 
-#── CLIENT RPCs: show join/leave locally ──#
 @rpc("any_peer")
 func player_joined(pid: int) -> void:
 	print("Player %d has joined the game!" % pid)
