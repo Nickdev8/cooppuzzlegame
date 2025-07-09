@@ -1,18 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Pushing to orgin..."
+echo "#### Pushing to orgin ############"
 ~/pushwithrandomemoji.sh
-echo "Pushing to remote..."
+
+echo "#### Pushing to remote ###########"
 git push
-sleep 5
 
 ssh nick@hackclub.app 'bash -s' <<'ENDSSH'
 
-echo "Connected to remote server. Deploying..."
+echo "#### Connected ###################"
 cd ~/mango
+
+sleep 1
+echo "#### Pulling from Origin #########"
 git pull origin main
 cp -a ~/mango/build/client/. ~/pub/
+
+echo "#### Restarting mango.service ####"
 systemctl --user restart mango.service
 
 ENDSSH
+
+echo "Done."
