@@ -24,10 +24,11 @@ func _ready():
 		# CLIENT (HTML5 → WebSocket; desktop → ENet)
 		if OS.has_feature("html5"):
 			multiplayer_peer = WebSocketMultiplayerPeer.new()
-			await multiplayer_peer.create_client("ws://nick.hackclub.app:%d" % PORT_NUMBER)
+			await multiplayer_peer.create_client("wss://nick.hackclub.app:%d" % PORT_NUMBER)
 		else:
 			multiplayer_peer = ENetMultiplayerPeer.new()
 			multiplayer_peer.create_client("nick.hackclub.app", PORT_NUMBER)
+			
 		print("Client connecting to %s:%d…" % ["nick.hackclub.app", PORT_NUMBER])
 
 	multiplayer.multiplayer_peer = multiplayer_peer
