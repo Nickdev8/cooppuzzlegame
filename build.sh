@@ -3,8 +3,9 @@ set -euo pipefail
 
 echo "Pushing to orgin..."
 ~/pushwithrandomemoji.sh
-
 echo "Pushing to remote..."
+git push
+sleep 5
 
 ssh nick@hackclub.app 'bash -s' <<'ENDSSH'
 
