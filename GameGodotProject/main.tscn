@@ -1,26 +1,3 @@
-[gd_scene load_steps=2 format=3 uid="uid://ynux0vo3b1yh"]
-
-[sub_resource type="GDScript" id="GDScript_7dm0k"]
-script/source = "extends Node
-
-@onready var lobby_join_main: VBoxContainer = %lobby_join_main
-@onready var code: TextEdit = $Control/lobby_join_main/code
-
-func _ready() -> void:
-	var validCharacters = \"QWERTYUIOPASDFGHJKLZXCVBNM\"
-	var randomCode = \"\"
-	var codeLengnt = randi_range(5,7)
-	
-	for i in codeLengnt:
-		randomCode = randomCode + validCharacters[randi_range(0, validCharacters.length())]
-	
-	print(randomCode)
-	code.text = randomCode
-
-func _on_join_button_down() -> void:
-	print(\"joining lobby: \" + code.text)
-	Network.join_lobby(code.text)
-"
+[gd_scene format=3 uid="uid://ynux0vo3b1yh"]
 
 [node name="Node" type="Node"]
-script = SubResource("GDScript_7dm0k")
