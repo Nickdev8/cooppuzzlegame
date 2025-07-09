@@ -1,7 +1,7 @@
 extends Node
 signal game_started
 
-const PORT_NUMBER := 18818
+const PORT_NUMBER := 39973
 const MAX_PEERS := 16
 
 var multiplayer_peer: WebSocketMultiplayerPeer
