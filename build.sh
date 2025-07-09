@@ -22,4 +22,7 @@ systemctl --user restart mango.service
 
 ENDSSH
 
+echo ""
+echo ""
 echo "Done."
+echo ""

@@ -16,14 +16,12 @@ var player_id: int = 0
 func _ready():
 	_connect_signals()
 	if OS.has_feature("server"):
-		# Running as a dedicated server (e.g. via `--server` flag)
 		is_server = true
 		player_id = 0
 		peer.create_server(PORT_NUMBER, MAX_PEERS)
 		multiplayer.multiplayer_peer = peer
 		print("Server running on port %d" % PORT_NUMBER)
 	else:
-		# Client will now connect to nick.hackclub.app
 		var server_address := "nick.hackclub.app"
 		peer.create_client(server_address, PORT_NUMBER)
 		multiplayer.multiplayer_peer = peer
@@ -59,19 +57,22 @@ func update_lobby_list(code: String, members: Array) -> void:
 #── CONNECTION SIGNALS ──#
 func _on_player_connected(pid: int) -> void:
 	if is_server:
+		# server‐side registration
 		player_info[pid] = {"name": "Player_%d" % pid}
 		rpc_id(pid, "register_player", player_info[pid])
 		print("Player %d joined; sent registration" % pid)
-	print("player " + str(pid) + " joined")
+
+		# broadcast a "player joined" notice to everyone
+		rpc("player_joined", pid)
 
 func _on_player_disconnected(pid: int) -> void:
-	# remove from all lobbies, broadcast updates
 	for code in lobbies.keys():
 		if pid in lobbies[code]:
 			lobbies[code].erase(pid)
 			_broadcast_lobby_update(code)
 	player_info.erase(pid)
 	print("Player %d disconnected" % pid)
+	rpc("player_left", pid)
 
 func _on_connected_ok(remote_id: int) -> void:
 	is_connected = true
@@ -92,3 +93,12 @@ func register_player(info: Dictionary) -> void:
 	var pid = multiplayer.get_remote_sender_id()
 	player_info[pid] = info
 	print("Registered player %d info: %s" % [pid, info])
+
+#── CLIENT RPCs: show join/leave locally ──#
+@rpc("any_peer")
+func player_joined(pid: int) -> void:
+	print("Player %d has joined the game!" % pid)
+
+@rpc("any_peer")
+func player_left(pid: int) -> void:
+	print("Player %d has left the game." % pid)
