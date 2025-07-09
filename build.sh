@@ -11,6 +11,7 @@ ssh nick@hackclub.app 'bash -s' <<'ENDSSH'
 echo "Connected to remote server. Deploying..."
 cd ~/mango
 git pull origin main
+cp -a ~/mango/build/client/. ~/pub/
 systemctl --user restart mango.service
 
 ENDSSH
