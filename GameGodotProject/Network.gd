@@ -85,3 +85,6 @@ func register_player(info: Dictionary) -> void:
 	var pid = multiplayer.get_remote_sender_id()
 	player_info[pid] = info
 	print("Registered player %d info: %s" % [pid, info])
+	
+	
+	
