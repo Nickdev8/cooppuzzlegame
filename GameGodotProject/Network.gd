@@ -4,36 +4,26 @@ signal game_started
 const PORT_NUMBER := 39973
 const MAX_PEERS := 16
 
-var multiplayer_peer: WebSocketMultiplayerPeer
+var multiplayer_peer: ENetMultiplayerPeer
 var is_server := false
 var is_connected := false
 var player_id := -1
-var player_info := {}  # track joined players
+var player_info: Dictionary = {}  # track joined players
 
 func _ready() -> void:
 	_connect_signals()
-	multiplayer_peer = WebSocketMultiplayerPeer.new()
+	multiplayer_peer = ENetMultiplayerPeer.new()
 
 	if OS.has_feature("server"):
-		# ─── SERVER ──────────────────────────────────
+		# ─── SERVER ───────────────────────────
 		is_server = true
 		player_id = 0
-		# 1) Load key & cert
-		var server_key = load("res://ssl/privkey.pem")
-		var server_cert = load("res://ssl/fullchain.pem")
-		# 2) Build TLSOptions
-		var tls_opts = TLSOptions.server(server_key, server_cert)
-		# 3) Start WSS server
-		multiplayer_peer.create_server(PORT_NUMBER, "*", tls_opts)
-		print("WSS server listening on port %d" % PORT_NUMBER)
+		multiplayer_peer.create_server(PORT_NUMBER, MAX_PEERS)
+		print("Server running on port %d" % PORT_NUMBER)
 	else:
-		# ─── CLIENT ──────────────────────────────────
-		# Pick ws vs wss
-		var scheme = "wss" if OS.has_feature("html5") else "ws"
-		var url = "%s://nick.hackclub.app:%d" % [scheme, PORT_NUMBER]
-		# Connect (await works without needing an `async` keyword)
-		await multiplayer_peer.create_client(url)
-		print("Client connecting to %s" % url)
+		# ─── CLIENT ───────────────────────────
+		multiplayer_peer.create_client("nick.hackclub.app", PORT_NUMBER)
+		print("Client connecting to nick.hackclub.app:%d…" % PORT_NUMBER)
 
 	multiplayer.multiplayer_peer = multiplayer_peer
 
@@ -82,3 +72,8 @@ func player_joined(pid: int) -> void:
 @rpc("any_peer")
 func player_left(pid: int) -> void:
 	print("Player %d has left the game." % pid)
+
+@rpc("any_peer")
+func print_everyone(message: String):
+	if is_connected:
+		print(message)
